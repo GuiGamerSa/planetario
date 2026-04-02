@@ -285,7 +285,13 @@ const PLANETS = [
     // ── Critérios de deteção (usa DEBUG para ver os valores reais) ──
     // scores.blue, .green, .red, .brown, .roundness (0-1 cada)
     detect(s) {
-      return s.blue > 0.12 && s.blue > s.red && s.roundness > 0.45;
+      // Exige: bastante azul + algum verde (continentes) + forma circular + pixels suficientes
+      // Azul puro sem verde = ecra, roupa, caixa azul -> rejeitado
+      return s.blue  > 0.18
+          && s.green > 0.05
+          && s.blue  > s.red * 1.8
+          && s.roundness > 0.58
+          && s.total > 180;
     },
   },
 
@@ -306,7 +312,7 @@ const PLANETS = [
 //  CONFIG
 // ═══════════════════════════════════════════
 const CFG = {
-  holdFrames:  2,     // frames para confirmar (2 = quase instantâneo)
+  holdFrames:  4,     // frames para confirmar (4 = equilibrio velocidade/precisao)
   zoneRatio:   0.50,  // tamanho do círculo de deteção vs largura do ecrã
   workSize:    160,   // canvas de trabalho (menor = mais rápido)
   edgeThresh:  20,    // sensibilidade de borda Sobel
@@ -562,6 +568,12 @@ function showPlanet(id) {
     `<div class="stat-cell"><div class="stat-lbl">${s.label}</div><div class="stat-val">${s.value}<span class="stat-u">${s.unit}</span></div></div>`
   ).join('');
 
+  // Para a camera (poupa CPU e bateria)
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.enabled = false);
+    video.pause();
+  }
+
   // Esconde reticle
   document.getElementById('reticle').classList.add('hidden');
 
@@ -580,8 +592,13 @@ function showPlanet(id) {
 function closeAR() {
   document.getElementById('ar-overlay').classList.remove('active');
 
-  // Reativa reticle e scanning após transição
+  // Reativa camera e scanning apos transicao
   setTimeout(() => {
+    // Reativa camera
+    if (video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.enabled = true);
+      video.play();
+    }
     activePlanet = null;
     holdCount    = 0;
     lastId       = null;
