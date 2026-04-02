@@ -285,13 +285,15 @@ const PLANETS = [
     // ── Critérios de deteção (usa DEBUG para ver os valores reais) ──
     // scores.blue, .green, .red, .brown, .roundness (0-1 cada)
     detect(s) {
-      // Exige: bastante azul + algum verde (continentes) + forma circular + pixels suficientes
-      // Azul puro sem verde = ecra, roupa, caixa azul -> rejeitado
-      return s.blue  > 0.18
-          && s.green > 0.05
-          && s.blue  > s.red * 1.8
-          && s.roundness > 0.58
-          && s.total > 180;
+      // Terra: azul + verde (continentes) + forma esferica uniforme em 360 graus
+      // Ecra azul: falha em activeSectors (bordas concentradas) e green muito baixo
+      return s.blue         > 0.18   // oceanos
+          && s.green        > 0.04   // continentes (filtra ecras lisos)
+          && s.blue         > s.red * 1.6
+          && s.roundness    > 0.50   // forma esferica uniforme
+          && s.activeSectors >= 6    // bordas em pelo menos 6 dos 12 sectores
+          && s.variance     < 0.020  // bordas distribuidas (nao concentradas como ecra)
+          && s.total        > 150;
     },
   },
 
@@ -312,7 +314,7 @@ const PLANETS = [
 //  CONFIG
 // ═══════════════════════════════════════════
 const CFG = {
-  holdFrames:  4,     // frames para confirmar (4 = equilibrio velocidade/precisao)
+  holdFrames:  5,     // frames para confirmar (5 = mais seguro contra falsos positivos)
   zoneRatio:   0.50,  // tamanho do círculo de deteção vs largura do ecrã
   workSize:    160,   // canvas de trabalho (menor = mais rápido)
   edgeThresh:  20,    // sensibilidade de borda Sobel
@@ -492,19 +494,26 @@ function captureAndAnalyze() {
 
 function analyzeZone(data, W, H) {
   const cx = W>>1, cy = H>>1;
-  const cr = W * 0.42;
-  const cr2 = cr*cr;
-  const ringIn2 = cr2 * 0.49;
-  const T = CFG.edgeThresh;
+  const cr  = W * 0.42;
+  const cr2 = cr * cr;
+  const T   = CFG.edgeThresh;
 
-  // Reutiliza buffer de grayscale
   if (!grayBuf || grayBuf.length !== W*H) grayBuf = new Uint8Array(W*H);
-
-  // 1. Grayscale
   for (let i=0, p=0; i<W*H; i++, p+=4)
     grayBuf[i] = (data[p]*77 + data[p+1]*150 + data[p+2]*29) >> 8;
 
-  let blue=0,green=0,red=0,brown=0,total=0,edgeRing=0,edgeTotal=0;
+  let blue=0, green=0, red=0, brown=0, total=0;
+
+  // Distribucao angular de bordas — 12 sectores de 30 graus cada
+  // Esfera: bordas distribuidas uniformemente em todos os sectores
+  // Ecra / caixa: bordas concentradas em 2-4 sectores (horizontais/verticais)
+  const SECTORS = 12;
+  const sectorEdge = new Uint16Array(SECTORS);
+  const sectorTot  = new Uint16Array(SECTORS);
+
+  // Anel onde contamos bordas: entre 60% e 95% do raio
+  const ringInner2 = cr2 * 0.36; // 60%^2
+  const ringOuter2 = cr2 * 0.90; // 95%^2
 
   for (let y=1; y<H-1; y++) {
     for (let x=1; x<W-1; x++) {
@@ -517,33 +526,60 @@ function analyzeZone(data, W, H) {
       if (lum<22||lum>238) continue;
 
       total++;
-      if (b>r && b>g && b>50 && b-r>16) blue++;
-      if (g>r && g>b && g>44 && g-b>10) green++;
-      if (r>g && r>b && r>65 && r-b>22) red++;
-      if (r>95 && r>b && g>b && r-b>22 && Math.abs(r-g)<55) brown++;
+      if (b>r  && b>g  && b>50  && b-r>16)              blue++;
+      if (g>r  && g>b  && g>44  && g-b>10)              green++;
+      if (r>g  && r>b  && r>65  && r-b>22)              red++;
+      if (r>95 && r>b  && g>b   && r-b>22 && Math.abs(r-g)<55) brown++;
 
-      if (d2>ringIn2) {
-        edgeTotal++;
-        const i=y*W+x;
-        const gx=-grayBuf[i-W-1]+grayBuf[i-W+1]-2*grayBuf[i-1]+2*grayBuf[i+1]-grayBuf[i+W-1]+grayBuf[i+W+1];
-        const gy=-grayBuf[i-W-1]-2*grayBuf[i-W]-grayBuf[i-W+1]+grayBuf[i+W-1]+2*grayBuf[i+W]+grayBuf[i+W+1];
-        if ((Math.abs(gx)+Math.abs(gy))>T) edgeRing++;
+      // Bordas no anel — divididas por sector angular
+      if (d2 >= ringInner2 && d2 <= ringOuter2) {
+        const angle = Math.atan2(dy, dx); // -PI a PI
+        const sector = Math.floor(((angle + Math.PI) / (2*Math.PI)) * SECTORS) % SECTORS;
+        sectorTot[sector]++;
+        const i  = y*W+x;
+        const gx = -grayBuf[i-W-1]+grayBuf[i-W+1]-2*grayBuf[i-1]+2*grayBuf[i+1]-grayBuf[i+W-1]+grayBuf[i+W+1];
+        const gy = -grayBuf[i-W-1]-2*grayBuf[i-W]-grayBuf[i-W+1]+grayBuf[i+W-1]+2*grayBuf[i+W]+grayBuf[i+W+1];
+        if ((Math.abs(gx)+Math.abs(gy)) > T) sectorEdge[sector]++;
       }
     }
   }
 
-  if (total<80) return {blue:0,green:0,red:0,brown:0,roundness:0,edgeDensity:0,total};
+  if (total < 80) return {blue:0,green:0,red:0,brown:0,roundness:0,edgeDensity:0,total};
 
-  const eD = edgeTotal>0 ? edgeRing/edgeTotal : 0;
-  const roundness = eD>0.05 && eD<0.7 ? Math.min(1, eD*4) : 0;
+  // Calcula densidade de borda por sector
+  const densities = [];
+  let totalEdgePx = 0, totalRingPx = 0;
+  for (let s=0; s<SECTORS; s++) {
+    totalEdgePx += sectorEdge[s];
+    totalRingPx += sectorTot[s];
+    densities.push(sectorTot[s]>0 ? sectorEdge[s]/sectorTot[s] : 0);
+  }
+  const eD = totalRingPx>0 ? totalEdgePx/totalRingPx : 0;
+
+  // Uniformidade: conta quantos sectores com bordas suficientes (>2%)
+  // Esfera pintada: 7-12 sectores activos
+  // Ecra / fundo liso: 0-3 sectores activos (so nas bordas do ecra)
+  const activeSectors = densities.filter(d => d > 0.02).length;
+
+  // Variancia da densidade entre sectores — baixa = uniforme (esfera), alta = concentrado (ecra)
+  const meanD = densities.reduce((a,b)=>a+b,0) / SECTORS;
+  const variance = densities.reduce((a,d)=>a+(d-meanD)**2, 0) / SECTORS;
+
+  // roundness: muitos sectores activos + baixa variancia + densidade moderada
+  let roundness = 0;
+  if (activeSectors >= 6 && eD > 0.04 && eD < 0.72 && variance < 0.018) {
+    roundness = Math.min(1, (activeSectors / SECTORS) * (1 - variance * 20));
+  }
 
   return {
-    blue:  blue/total,
-    green: green/total,
-    red:   red/total,
-    brown: brown/total,
+    blue:   blue/total,
+    green:  green/total,
+    red:    red/total,
+    brown:  brown/total,
     roundness,
     edgeDensity: eD,
+    activeSectors,
+    variance: Math.round(variance*1000)/1000,
     total,
   };
 }
@@ -636,14 +672,15 @@ function toggleDebug() {
 
 function renderDebug(s) {
   document.getElementById('debug-box').innerHTML =
-    `blue:  ${(s.blue*100).toFixed(1)}%\n` +
-    `green: ${(s.green*100).toFixed(1)}%\n` +
-    `red:   ${(s.red*100).toFixed(1)}%\n` +
-    `brown: ${(s.brown*100).toFixed(1)}%\n` +
-    `round: ${(s.roundness*100).toFixed(1)}%\n` +
-    `edges: ${(s.edgeDensity*100).toFixed(1)}%\n` +
-    `px:    ${s.total}\n` +
-    `hold:  ${holdCount}/${CFG.holdFrames}`;
+    `blue:    ${(s.blue*100).toFixed(1)}%\n` +
+    `green:   ${(s.green*100).toFixed(1)}%\n` +
+    `red:     ${(s.red*100).toFixed(1)}%\n` +
+    `round:   ${(s.roundness*100).toFixed(1)}%\n` +
+    `sectors: ${s.activeSectors}/12\n` +
+    `variance:${s.variance}\n` +
+    `edges:   ${(s.edgeDensity*100).toFixed(1)}%\n` +
+    `px:      ${s.total}\n` +
+    `hold:    ${holdCount}/${CFG.holdFrames}`;
 }
 
 window.addEventListener('resize', () => {
