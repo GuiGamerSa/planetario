@@ -322,6 +322,7 @@ html, body {
 <script>
 (() => {
   const $ = id => document.getElementById(id);
+
   const video = $('camera');
   const reticle = $('reticle');
   const statusChip = $('statusChip');
@@ -329,79 +330,90 @@ html, body {
   const scanBar = $('scanBar');
   const scanBarText = $('scanBarText');
   const infoPanel = $('infoPanel');
-  const infoCard = $('infoCard');
   const confFill = $('confFill');
   const confPct = $('confPct');
   const confWrap = $('confWrap');
 
   let isDetected = false;
   let smoothConf = 0;
-  let detecting = false;
-  let animationId = null;
+  let lastDetectTime = 0;
 
-  // Earth color profile calibrated from 4 real photos of user's model
-  const DETECT_ON = 0.58;
-  const DETECT_OFF = 0.30;
-  const SMOOTH = 0.25;
+  const DETECT_ON = 0.65;
+  const DETECT_OFF = 0.35;
+  const SMOOTH = 0.2;
+  const COOLDOWN = 1200;
 
   $('startBtn').addEventListener('click', async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: 'environment' }, width: 640, height: 480 },
         audio: false
       });
+
       video.srcObject = stream;
       await video.play();
+
       $('startScreen').classList.add('hidden');
-      detecting = true;
-      setTimeout(detect, 500);
+      setTimeout(detect, 300);
+
     } catch (e) {
-      $('startScreen').classList.add('hidden');
       $('errorScreen').classList.add('visible');
     }
   });
 
-function detect() {
-  const c = document.createElement('canvas');
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  const W = 120, H = 90;
-  c.width = W; c.height = H;
+  function detect() {
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d', { willReadFrequently: true });
 
-  const rx = W * 0.2 | 0, ry = H * 0.12 | 0;
-  const rw = W * 0.6 | 0, rh = H * 0.76 | 0;
+    const W = 100, H = 75;
+    c.width = W; c.height = H;
 
-  function loop() {
-    if (!detecting) return;
+    // ROI CENTRAL (ignora bordas)
+    const rx = W * 0.25 | 0;
+    const ry = H * 0.2 | 0;
+    const rw = W * 0.5 | 0;
+    const rh = H * 0.6 | 0;
 
-    try {
-      ctx.drawImage(video, 0, 0, W, H);
-      const d = ctx.getImageData(rx, ry, rw, rh).data;
+    function loop() {
+      try {
+        ctx.drawImage(video, 0, 0, W, H);
+        const d = ctx.getImageData(rx, ry, rw, rh).data;
 
-      let blue = 0, green = 0, brown = 0, dark = 0, tot = 0;
+        let blue = 0, green = 0, brown = 0, dark = 0;
+        let tot = 0;
 
-      for (let i = 0; i < d.length; i += 12) {
-        const r = d[i], g = d[i+1], b = d[i+2];
-        tot++;
+        for (let i = 0; i < d.length; i += 16) { // menos pixels = mais FPS
+          const r = d[i], g = d[i+1], b = d[i+2];
+          tot++;
 
-        if (b > 70 && b > r * 1.1 && b > g * 0.9) blue++;
-        else if (g > 55 && g > r * 0.8 && g > b * 0.75 && (g - Math.min(r, b)) > 15) green++;
-        else if (r > 80 && g > 50 && g < r * 0.95 && b < r * 0.65) brown++;
-        else if (r < 55 && g < 55 && b < 70) dark++;
-      }
-
-      if (tot > 0) {
-        const bp = blue/tot, gp = green/tot, brp = brown/tot, dp = dark/tot;
-        const earth = bp + gp + brp + dp;
+          if (b > 70 && b > r * 1.15 && b > g * 0.95) blue++;
+          else if (g > 60 && g > r * 0.8 && g > b * 0.75) green++;
+          else if (r > 90 && g > 60 && b < r * 0.6) brown++;
+          else if (r < 60 && g < 60 && b < 80) dark++;
+        }
 
         let conf = 0;
 
-        if (earth > 0.25 && bp > 0.06 && (gp + brp) > 0.08) {
-          const bs = Math.min(bp / 0.24, 1.5);
-          const gs = Math.min(gp / 0.535, 1.5);
-          const ds = Math.min(dp / 0.182, 1.5);
-          conf = Math.min(1, earth * 1.05) * Math.min(1, bs * 0.35 + gs * 0.4 + ds * 0.25);
+        if (tot > 0) {
+          const bp = blue/tot;
+          const gp = green/tot;
+          const brp = brown/tot;
+          const dp = dark/tot;
+
+          const mix = bp + gp + brp + dp;
+
+          // 🔥 condição forte anti falso positivo
+          if (
+            mix > 0.35 &&
+            bp > 0.08 &&
+            (gp + brp) > 0.1
+          ) {
+            const diversity = (bp * 0.4 + gp * 0.3 + brp * 0.2 + dp * 0.1);
+            conf = Math.min(1, mix * 1.1 * diversity * 2);
+          }
         }
 
+        // suavização
         smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
 
         const pct = Math.round(smoothConf * 100);
@@ -409,71 +421,61 @@ function detect() {
         confPct.textContent = pct + '%';
 
         confFill.classList.toggle('high', smoothConf > DETECT_ON);
-        confWrap.classList.toggle('active', smoothConf > 0.12);
+        confWrap.classList.toggle('active', smoothConf > 0.15);
 
-        if (!isDetected && smoothConf >= DETECT_ON) show();
-        else if (isDetected && smoothConf < DETECT_OFF) hide();
-      }
+        const now = Date.now();
 
-    } catch (e) {}
+        if (!isDetected && smoothConf >= DETECT_ON && (now - lastDetectTime > COOLDOWN)) {
+          show();
+          lastDetectTime = now;
+        }
+        else if (isDetected && smoothConf < DETECT_OFF) {
+          hide();
+        }
 
-    animationId = requestAnimationFrame(loop);
+      } catch (e) {}
+
+      requestAnimationFrame(loop);
+    }
+
+    loop();
   }
 
-  // ✅ CHAMADA CORRETA (fora da função)
-  loop();
-}
+  function show() {
+    isDetected = true;
 
-  function stopAll() {
-  detecting = false;
+    reticle.classList.add('detected');
+    statusChip.textContent = '● TERRA';
+    statusChip.classList.add('detected');
 
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
+    scanHint.classList.add('hidden');
+    scanBar.classList.add('detected');
+    scanBarText.textContent = 'Terra identificada ✓';
+
+    if (navigator.vibrate) navigator.vibrate(50);
+
+    setTimeout(() => infoPanel.classList.add('visible'), 200);
   }
-
-  const stream = video.srcObject;
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    video.srcObject = null;
-  }
-}
-
-function show() {
-  if (isDetected) return;
-  isDetected = true;
-
-  reticle.classList.add('detected');
-  statusChip.textContent = '● TERRA';
-  statusChip.classList.add('detected');
-  scanHint.classList.add('hidden');
-  scanBar.classList.add('detected');
-  scanBarText.textContent = 'Terra identificada ✓';
-
-  if (navigator.vibrate) navigator.vibrate(50);
-
-  setTimeout(() => {
-    infoPanel.classList.add('visible');
-  }, 300);
-}
 
   function hide() {
-    if (!isDetected) return;
     isDetected = false;
+
     infoPanel.classList.remove('visible');
     reticle.classList.remove('detected');
-    statusChip.textContent = 'A PROCURAR'; statusChip.classList.remove('detected');
+
+    statusChip.textContent = 'A PROCURAR';
+    statusChip.classList.remove('detected');
+
     scanHint.classList.remove('hidden');
-    scanBar.classList.remove('detected'); scanBarText.textContent = 'A analisar imagem...';
+    scanBar.classList.remove('detected');
+    scanBarText.textContent = 'A analisar imagem...';
   }
 
-$('closeBtn').addEventListener('click', () => {
-  hide();
-});
+  $('closeBtn').addEventListener('click', () => {
+    smoothConf = 0;
+    hide();
+  });
 
-  let ty = 0;
-  infoCard.addEventListener('touchstart', e => { if (infoCard.scrollTop <= 0) ty = e.touches[0].clientY; }, { passive: true });
-  infoCard.addEventListener('touchmove', e => { if (infoCard.scrollTop > 0) return; if (e.touches[0].clientY - ty > 80) hide(); }, { passive: true });
 })();
 </script>
 </body>
