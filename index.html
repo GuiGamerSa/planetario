@@ -9,113 +9,198 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
   --space: #020818;
-  --panel: rgba(3, 14, 42, 0.94);
+  --panel: rgba(3,14,42,0.94);
   --accent: #00d4ff;
   --text: #e8f4ff;
   --muted: rgba(180,210,255,0.55);
   --border: rgba(0,212,255,0.22);
   --green: #00ff88;
+  --yellow: #ffcc00;
 }
-html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Exo 2',sans-serif; color:var(--text); user-select:none; -webkit-user-select:none; }
+html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Exo 2',sans-serif; color:var(--text); user-select:none; -webkit-user-select:none; touch-action:none; }
 
-/* VIDEO + CANVAS */
 #video { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; }
-#canvas-display { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:2; pointer-events:none; }
 #canvas-work { display:none; }
 
-/* HUD */
-#hud { position:fixed; inset:0; z-index:4; pointer-events:none; }
-.hud-c { position:absolute; width:26px; height:26px; border-color:var(--accent); border-style:solid; border-width:0; opacity:0.55; }
-.hud-c.tl { top:14px; left:14px; border-top-width:2px; border-left-width:2px; }
-.hud-c.tr { top:14px; right:14px; border-top-width:2px; border-right-width:2px; }
-.hud-c.bl { bottom:14px; left:14px; border-bottom-width:2px; border-left-width:2px; }
-.hud-c.br { bottom:14px; right:14px; border-bottom-width:2px; border-right-width:2px; }
-
+/* ── HUD TOP BAR ── */
 #hud-bar {
-  position:absolute; top:0; left:0; right:0;
-  padding:12px 16px;
+  position:fixed; top:0; left:0; right:0; z-index:6;
+  padding:14px 18px;
   display:flex; align-items:center; gap:10px;
-  background:linear-gradient(to bottom, rgba(2,8,24,0.88), transparent);
+  background:linear-gradient(to bottom, rgba(2,8,24,0.92), transparent);
 }
-#hud-title { font-family:'Orbitron',monospace; font-size:0.68rem; letter-spacing:0.25em; color:var(--muted); }
+#hud-title { font-family:'Orbitron',monospace; font-size:0.7rem; letter-spacing:0.25em; color:var(--muted); }
 #hud-status {
   margin-left:auto;
-  font-size:0.55rem; letter-spacing:0.15em;
-  border:1px solid rgba(0,212,255,0.3); padding:3px 9px; border-radius:2px;
+  font-size:0.58rem; letter-spacing:0.14em;
+  border:1px solid rgba(0,212,255,0.3); padding:4px 10px; border-radius:2px;
   color:var(--accent); font-family:'Orbitron',monospace;
   transition:color 0.3s, border-color 0.3s;
+  white-space:nowrap;
 }
-#hud-status.scanning { color:#ffcc00; border-color:rgba(255,204,0,0.35); }
-#hud-status.found    { color:var(--green); border-color:rgba(0,255,136,0.4); animation:blink 1.2s ease-in-out infinite; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+#hud-status.confirming { color:var(--yellow); border-color:rgba(255,204,0,0.4); }
+#hud-status.found      { color:var(--green);  border-color:rgba(0,255,136,0.4); animation:blink 1.2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.35} }
 
-/* DEBUG toggle */
+/* ── RETICLE (zona de deteção) ── */
+#reticle-wrap {
+  position:fixed; z-index:5;
+  top:50%; left:50%;
+  transform:translate(-50%, -58%); /* ligeiramente acima do centro */
+  pointer-events:none;
+}
+/* Tamanho dinâmico via JS */
+#reticle-box {
+  position:relative;
+  border:1.5px solid rgba(0,212,255,0.0);
+  border-radius:50%;
+  transition:border-color 0.3s;
+}
+#reticle-box.confirming { border-color:rgba(255,204,0,0.7); }
+#reticle-box.found      { border-color:rgba(0,255,136,0.9); }
+
+/* Quatro cantos do reticle */
+.ret-corner {
+  position:absolute;
+  width:20px; height:20px;
+  border-color:var(--accent);
+  border-style:solid; border-width:0;
+  opacity:0.8;
+  transition:border-color 0.3s, opacity 0.3s;
+}
+.ret-corner.tl { top:-1px; left:-1px; border-top-width:2px; border-left-width:2px; border-radius:2px 0 0 0; }
+.ret-corner.tr { top:-1px; right:-1px; border-top-width:2px; border-right-width:2px; border-radius:0 2px 0 0; }
+.ret-corner.bl { bottom:-1px; left:-1px; border-bottom-width:2px; border-left-width:2px; border-radius:0 0 0 2px; }
+.ret-corner.br { bottom:-1px; right:-1px; border-bottom-width:2px; border-right-width:2px; border-radius:0 0 2px 0; }
+#reticle-box.confirming .ret-corner { border-color:var(--yellow); }
+#reticle-box.found      .ret-corner { border-color:var(--green); }
+
+/* Linha de progresso ao redor do reticle */
+#ret-progress {
+  position:absolute; inset:-3px;
+  border-radius:50%;
+  border:2px solid transparent;
+  border-top-color:var(--yellow);
+  transform:rotate(0deg);
+  transition:none;
+  display:none;
+}
+#reticle-box.confirming #ret-progress { display:block; animation:retSpin 1s linear infinite; }
+@keyframes retSpin { to { transform:rotate(360deg); } }
+
+/* Cruz central */
+.ret-cross { position:absolute; background:rgba(0,212,255,0.4); top:50%; left:50%; }
+.ret-cross.h { width:16px; height:1px; transform:translate(-50%,-50%); }
+.ret-cross.v { width:1px; height:16px; transform:translate(-50%,-50%); }
+
+/* Label abaixo do reticle */
+#ret-label {
+  position:absolute; top:calc(100% + 14px);
+  left:50%; transform:translateX(-50%);
+  white-space:nowrap;
+  font-size:0.65rem; letter-spacing:0.12em;
+  color:rgba(150,200,255,0.55);
+  animation:pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+/* Barra de progresso linear (hold frames) */
+#hold-bar-wrap {
+  position:absolute; top:calc(100% + 36px);
+  left:50%; transform:translateX(-50%);
+  width:80px; height:2px;
+  background:rgba(255,255,255,0.1);
+  border-radius:2px;
+  overflow:hidden;
+  display:none;
+}
+#hold-bar-wrap.active { display:block; }
+#hold-bar { height:100%; width:0%; background:var(--yellow); transition:width 0.18s linear; }
+
+/* ── CANTOS DO ECRÃ ── */
+.screen-corner {
+  position:fixed; z-index:4; pointer-events:none;
+  width:22px; height:22px;
+  border-color:rgba(0,212,255,0.4); border-style:solid; border-width:0;
+}
+.screen-corner.tl { top:12px; left:12px; border-top-width:1.5px; border-left-width:1.5px; }
+.screen-corner.tr { top:12px; right:12px; border-top-width:1.5px; border-right-width:1.5px; }
+.screen-corner.bl { bottom:12px; left:12px; border-bottom-width:1.5px; border-left-width:1.5px; }
+.screen-corner.br { bottom:12px; right:12px; border-bottom-width:1.5px; border-right-width:1.5px; }
+
+/* ── DEBUG ── */
+#debug-panel {
+  position:fixed; bottom:60px; left:10px; z-index:10;
+  background:rgba(0,0,0,0.75); padding:8px 12px;
+  font-family:monospace; font-size:11px; color:#0f0;
+  border:1px solid #0f03; border-radius:3px;
+  line-height:1.7; display:none; pointer-events:none;
+  max-width:220px;
+}
+#debug-panel.active { display:block; }
 #btn-debug {
-  position:fixed; bottom:18px; right:16px; z-index:10;
-  font-size:0.55rem; font-family:'Orbitron',monospace; letter-spacing:0.1em;
-  padding:5px 10px; border:1px solid var(--border); background:rgba(0,0,0,0.5);
+  position:fixed; bottom:18px; right:14px; z-index:10;
+  font-size:0.52rem; font-family:'Orbitron',monospace; letter-spacing:0.1em;
+  padding:5px 10px; border:1px solid var(--border); background:rgba(0,0,0,0.6);
   color:var(--muted); border-radius:2px; cursor:pointer;
 }
 
-/* AR OVERLAY */
-#ar-overlay { position:fixed; inset:0; z-index:5; display:none; pointer-events:none; }
+/* ── AR CARD ── */
+#ar-overlay { position:fixed; inset:0; z-index:7; display:none; pointer-events:none; }
 #ar-overlay.active { display:block; }
-
-#ar-line-svg { position:absolute; inset:0; width:100%; height:100%; }
-
+#ar-svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
 #ar-dot {
-  position:absolute; width:12px; height:12px; border-radius:50%;
-  background:var(--accent); transform:translate(-50%,-50%);
-  box-shadow:0 0 16px var(--accent),0 0 4px #fff;
+  position:absolute; width:14px; height:14px; border-radius:50%;
+  background:var(--green); transform:translate(-50%,-50%);
+  box-shadow:0 0 18px var(--green), 0 0 5px #fff;
   animation:dotPulse 1.4s ease-in-out infinite;
 }
 @keyframes dotPulse {
-  0%,100%{ box-shadow:0 0 14px var(--accent),0 0 3px #fff; transform:translate(-50%,-50%) scale(1); }
-  50%    { box-shadow:0 0 28px var(--accent),0 0 8px #fff; transform:translate(-50%,-50%) scale(1.35); }
+  0%,100%{ transform:translate(-50%,-50%) scale(1); box-shadow:0 0 14px var(--green),0 0 3px #fff; }
+  50%    { transform:translate(-50%,-50%) scale(1.4); box-shadow:0 0 28px var(--green),0 0 8px #fff; }
 }
-
 #ar-card {
   position:absolute; background:var(--panel); border:1px solid var(--border);
-  border-radius:3px; width:min(300px,84vw); overflow:hidden;
+  border-radius:3px; width:min(310px,86vw); overflow:hidden;
   pointer-events:auto; animation:cardIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
 }
-@keyframes cardIn { from{opacity:0;transform:scale(0.82)} to{opacity:1;transform:scale(1)} }
-
-.card-bar { height:3px; background:linear-gradient(90deg,var(--accent),#7b6cff); }
-.card-header { padding:10px 14px 9px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
-.card-dot { width:38px; height:38px; border-radius:50%; flex-shrink:0; box-shadow:inset -3px -3px 8px rgba(0,0,0,.5); }
-.card-name { font-family:'Orbitron',monospace; font-size:1rem; font-weight:900; letter-spacing:0.06em; }
+@keyframes cardIn { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+.card-bar  { height:3px; background:linear-gradient(90deg,var(--accent),#7b6cff); }
+.card-head { padding:11px 14px 9px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+.card-globe { width:40px; height:40px; border-radius:50%; flex-shrink:0; box-shadow:inset -4px -4px 10px rgba(0,0,0,.6); }
+.card-name { font-family:'Orbitron',monospace; font-size:1.05rem; font-weight:900; letter-spacing:0.05em; }
 .card-type { font-size:0.6rem; letter-spacing:0.2em; color:var(--muted); text-transform:uppercase; margin-top:2px; }
-.card-desc { padding:10px 14px; font-size:0.75rem; line-height:1.75; color:rgba(200,225,255,0.82); border-bottom:1px solid var(--border); }
-.card-stats { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:rgba(0,212,255,0.08); }
-.c-stat { background:var(--panel); padding:7px 12px; }
-.c-stat-lbl { font-size:0.52rem; letter-spacing:0.18em; color:var(--muted); text-transform:uppercase; margin-bottom:2px; }
-.c-stat-val { font-family:'Orbitron',monospace; font-size:0.8rem; font-weight:700; color:var(--accent); }
-.c-stat-u { font-size:0.55rem; color:var(--muted); margin-left:2px; font-family:'Exo 2',sans-serif; }
-.card-close { display:block; width:100%; padding:7px; background:none; border:none; border-top:1px solid var(--border); color:var(--muted); font-family:'Orbitron',monospace; font-size:0.55rem; letter-spacing:0.18em; cursor:pointer; transition:color 0.2s; text-transform:uppercase; pointer-events:auto; }
+.card-desc { padding:10px 14px; font-size:0.76rem; line-height:1.75; color:rgba(200,225,255,0.82); border-bottom:1px solid var(--border); }
+.card-stats { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:rgba(0,212,255,0.07); }
+.c-s { background:var(--panel); padding:8px 12px; }
+.c-sl { font-size:0.52rem; letter-spacing:0.18em; color:var(--muted); text-transform:uppercase; margin-bottom:2px; }
+.c-sv { font-family:'Orbitron',monospace; font-size:0.82rem; font-weight:700; color:var(--accent); }
+.c-su { font-size:0.55rem; color:var(--muted); margin-left:2px; font-family:'Exo 2',sans-serif; }
+.card-close { display:block; width:100%; padding:8px; background:none; border:none; border-top:1px solid var(--border); color:var(--muted); font-family:'Orbitron',monospace; font-size:0.55rem; letter-spacing:0.18em; cursor:pointer; transition:color 0.2s; text-transform:uppercase; pointer-events:auto; }
 .card-close:hover { color:var(--accent); }
 
-/* HINT */
-#hint {
-  position:fixed; bottom:52px; left:0; right:0; text-align:center; z-index:4;
-  font-size:0.62rem; letter-spacing:0.12em; color:rgba(150,190,240,0.5);
-  pointer-events:none; animation:pulse 2.5s ease-in-out infinite;
-}
-@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.9} }
-
-/* SPLASH */
+/* ── SPLASH ── */
 #splash {
-  position:fixed; inset:0; z-index:20;
-  background:var(--space);
+  position:fixed; inset:0; z-index:20; background:var(--space);
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  transition:opacity 0.6s;
+  gap:0; transition:opacity 0.6s;
 }
 #splash.hidden { opacity:0; pointer-events:none; }
 .sp-ring { width:60px; height:60px; border:2px solid rgba(0,212,255,0.1); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; margin-bottom:1.5rem; }
 @keyframes spin { to{transform:rotate(360deg)} }
-.sp-title { font-family:'Orbitron',monospace; font-size:clamp(1.4rem,5vw,2rem); font-weight:900; letter-spacing:0.2em; background:linear-gradient(135deg,#fff 30%,var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:0.5rem; }
-.sp-sub { font-size:0.65rem; letter-spacing:0.28em; color:var(--muted); margin-bottom:2rem; text-transform:uppercase; }
-#btn-start { font-family:'Orbitron',monospace; font-size:0.78rem; font-weight:700; letter-spacing:0.2em; padding:0.9rem 2.4rem; border:1.5px solid var(--accent); background:rgba(0,212,255,0.07); color:var(--accent); cursor:pointer; border-radius:2px; position:relative; overflow:hidden; transition:all 0.3s; text-transform:uppercase; }
+.sp-title { font-family:'Orbitron',monospace; font-size:clamp(1.5rem,5vw,2.2rem); font-weight:900; letter-spacing:0.2em; background:linear-gradient(135deg,#fff 30%,var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:0.5rem; }
+.sp-sub { font-size:0.65rem; letter-spacing:0.28em; color:var(--muted); margin-bottom:0.6rem; text-transform:uppercase; }
+.sp-instructions {
+  font-size:0.7rem; color:rgba(150,200,255,0.7); text-align:center;
+  max-width:260px; line-height:1.8; margin-bottom:2rem;
+}
+.sp-instructions b { color:var(--accent); font-weight:600; }
+#btn-start {
+  font-family:'Orbitron',monospace; font-size:0.8rem; font-weight:700; letter-spacing:0.2em;
+  padding:0.9rem 2.5rem; border:1.5px solid var(--accent); background:rgba(0,212,255,0.07);
+  color:var(--accent); cursor:pointer; border-radius:2px; position:relative; overflow:hidden;
+  transition:all 0.3s; text-transform:uppercase;
+}
 #btn-start::before { content:''; position:absolute; inset:0; background:var(--accent); transform:translateX(-101%); transition:transform 0.3s; z-index:-1; }
 #btn-start:hover { color:var(--space); }
 #btn-start:hover::before { transform:translateX(0); }
@@ -125,25 +210,43 @@ html, body { width:100%; height:100%; overflow:hidden; background:#000; font-fam
 <body>
 
 <video id="video" autoplay playsinline muted></video>
-<canvas id="canvas-display"></canvas>
 <canvas id="canvas-work"></canvas>
 
-<div id="hud">
-  <div class="hud-c tl"></div><div class="hud-c tr"></div>
-  <div class="hud-c bl"></div><div class="hud-c br"></div>
-  <div id="hud-bar">
-    <span id="hud-title">COSMOS AR</span>
-    <div id="hud-status">● A PROCURAR</div>
+<!-- HUD -->
+<div id="hud-bar">
+  <span id="hud-title">COSMOS AR</span>
+  <div id="hud-status">● A PROCURAR</div>
+</div>
+
+<!-- Cantos do ecrã -->
+<div class="screen-corner tl"></div>
+<div class="screen-corner tr"></div>
+<div class="screen-corner bl"></div>
+<div class="screen-corner br"></div>
+
+<!-- Reticle de deteção -->
+<div id="reticle-wrap">
+  <div id="reticle-box">
+    <div class="ret-corner tl"></div>
+    <div class="ret-corner tr"></div>
+    <div class="ret-corner bl"></div>
+    <div class="ret-corner br"></div>
+    <div class="ret-cross h"></div>
+    <div class="ret-cross v"></div>
+    <div id="ret-progress"></div>
+    <div id="ret-label">Centra o planeta aqui</div>
+    <div id="hold-bar-wrap"><div id="hold-bar"></div></div>
   </div>
 </div>
 
+<!-- AR overlay -->
 <div id="ar-overlay">
-  <svg id="ar-line-svg"><line id="ar-line" stroke="rgba(0,212,255,0.5)" stroke-width="1.5" stroke-dasharray="5,4"/></svg>
+  <svg id="ar-svg"><line id="ar-line" stroke="rgba(0,212,255,0.6)" stroke-width="1.5" stroke-dasharray="5,4"/></svg>
   <div id="ar-dot"></div>
   <div id="ar-card">
     <div class="card-bar"></div>
-    <div class="card-header">
-      <div class="card-dot" id="card-dot"></div>
+    <div class="card-head">
+      <div class="card-globe" id="card-globe"></div>
       <div><div class="card-name" id="card-name">—</div><div class="card-type" id="card-type">—</div></div>
     </div>
     <div class="card-desc" id="card-desc">—</div>
@@ -152,20 +255,27 @@ html, body { width:100%; height:100%; overflow:hidden; background:#000; font-fam
   </div>
 </div>
 
-<div id="hint">Aponta para o planeta · mantém estável</div>
-<button id="btn-debug" onclick="toggleDebug()">DEBUG OFF</button>
+<!-- Debug -->
+<div id="debug-panel"></div>
+<button id="btn-debug" onclick="toggleDebug()">DEBUG</button>
 
+<!-- Splash -->
 <div id="splash">
   <div class="sp-ring"></div>
   <div class="sp-title">COSMOS AR</div>
   <div class="sp-sub">Deteção de Planetas</div>
+  <div class="sp-instructions">
+    Aponta a câmera para o planeta e<br>
+    <b>centra-o dentro do círculo</b><br>
+    Aguarda a confirmação automática
+  </div>
   <button id="btn-start" onclick="startCamera()">◎ &nbsp;ABRIR CÂMERA</button>
   <div id="sp-err"></div>
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════════
-//  DADOS DOS PLANETAS  —  edita os textos aqui!
+//  DADOS DOS PLANETAS — edita os textos aqui!
 // ═══════════════════════════════════════════════════════════
 const PLANETS = [
   {
@@ -175,10 +285,10 @@ const PLANETS = [
     gradient: 'radial-gradient(circle at 35% 35%, #7ac8f0, #1a6eb5 40%, #0a3060)',
     glow: '#4a9eff',
 
-    // ── DESCRIÇÃO (edita este texto!) ──────────────────────
+    // ── DESCRIÇÃO ──────────────────────────────────────────
     descricao: 'O nosso lar e único planeta conhecido com vida. 71% da superfície é coberta por oceanos de água líquida. A atmosfera de azoto e oxigénio protege todos os seres vivos das radiações solares.',
 
-    // ── ESTATÍSTICAS (edita à vontade) ────────────────────
+    // ── ESTATÍSTICAS ───────────────────────────────────────
     stats: [
       { label: 'Diâmetro',  value: '12.742', unit: 'km'   },
       { label: 'Dist. Sol', value: '149,6M', unit: 'km'   },
@@ -186,20 +296,15 @@ const PLANETS = [
       { label: 'Satélites', value: '1',      unit: 'lua'  },
     ],
 
-    // ── CRITÉRIOS DE DETEÇÃO ──────────────────────────────
-    // Analisa os pixels dentro da esfera detetada
-    // Ajusta estes valores se a deteção falhar
-    detect: {
-      // % mínima de pixels AZUIS na esfera (0.0 a 1.0)
-      blueMin: 0.22,
-      // % mínima de pixels VERDES na esfera
-      greenMin: 0.06,
-      // A Terra tem MAIS azul que vermelho
-      blueGtRed: true,
+    // ── DETEÇÃO DE COR (analisa zona central da esfera) ────
+    // Scores de 0 a 1 — usa modo debug para ver os valores reais
+    detect(scores) {
+      // Terra: muito azul, algum verde/castanho (continentes), pouco vermelho puro
+      return scores.blue > 0.15 && scores.blue > scores.red && scores.roundness > 0.55;
     },
   },
 
-  // ── Para adicionar mais planetas, copia este bloco ──────
+  // ── Adiciona planetas aqui ─────────────────────────────
   // {
   //   id: 'marte',
   //   name: 'Marte',
@@ -207,424 +312,366 @@ const PLANETS = [
   //   gradient: 'radial-gradient(circle at 35% 35%, #e87858, #c04020 50%, #601808)',
   //   glow: '#d4512a',
   //   descricao: 'O Planeta Vermelho...',
-  //   stats: [
-  //     { label: 'Diâmetro', value: '6.779', unit: 'km' },
-  //   ],
-  //   detect: { redMin: 0.3, blueGtRed: false, greenMin: 0.0 },
+  //   stats: [{ label: 'Diâmetro', value: '6.779', unit: 'km' }],
+  //   detect(scores) {
+  //     return scores.red > 0.30 && scores.red > scores.blue * 2 && scores.roundness > 0.5;
+  //   },
   // },
 ];
 
 // ═══════════════════════════════════════════════════════════
-//  PARÂMETROS DE DETEÇÃO  —  afina aqui se necessário
+//  CONFIG — afina aqui se necessário
 // ═══════════════════════════════════════════════════════════
 const CFG = {
-  scanInterval:   180,  // ms entre análises (mais baixo = mais rápido mas mais CPU)
-  holdFrames:     6,    // frames seguidas para confirmar (mais alto = mais estável)
-  minCircleRatio: 0.06, // tamanho mínimo do círculo vs largura da imagem (0.0–1.0)
-  maxCircleRatio: 0.55, // tamanho máximo
-  stickRatio:     0.25, // % da imagem abaixo do centro que deve ter pixels de suporte
-  edgeThreshold:  30,   // sensibilidade do detetor de bordas (10–80; mais baixo = mais sensível)
-  downscale:      320,  // largura de trabalho em px (mais baixo = mais rápido)
+  scanMs:       200,   // intervalo de análise em ms
+  holdFrames:   5,     // frames seguidas para confirmar
+  zoneSize:     0.52,  // tamanho da zona de deteção (fração da largura do ecrã)
+  workSize:     240,   // tamanho do canvas de trabalho (px)
+  edgeThresh:   22,    // threshold Sobel para detetar bordas
+  minEdgeRatio: 0.03,  // mínimo de pixels de borda na zona (filtra fundo vazio)
 };
 
 // ═══════════════════════════════════════════════════════════
-//  APP
+//  ESTADO
 // ═══════════════════════════════════════════════════════════
-const video    = document.getElementById('video');
-const cDisp    = document.getElementById('canvas-display');
-const ctxDisp  = cDisp.getContext('2d');
-const cWork    = document.getElementById('canvas-work');
-const ctxWork  = cWork.getContext('2d', { willReadFrequently: true });
+const video   = document.getElementById('video');
+const cWork   = document.getElementById('canvas-work');
+const ctxW    = cWork.getContext('2d', { willReadFrequently: true });
 
-let debugMode     = false;
-let detecting     = false;
-let scanTimer     = null;
-let holdCount     = 0;
-let lastId        = null;
-let activePlanet  = null;
-let animFrame     = null;
+let detecting    = false;
+let scanTimer    = null;
+let holdCount    = 0;
+let lastId       = null;
+let activePlanet = null;
+let debugOn      = false;
 
-// ── CÂMERA ──────────────────────────────────────────────
+// Posição do reticle no ecrã (calculada em setupReticle)
+let reticleScreen = { cx: 0, cy: 0, r: 0 };
+
+// ── CÂMERA ─────────────────────────────────────────────────
 async function startCamera() {
   const errEl = document.getElementById('sp-err');
   errEl.style.display = 'none';
   document.getElementById('btn-start').textContent = '● A ABRIR...';
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 },
+      },
       audio: false,
     });
     video.srcObject = stream;
     await video.play();
     document.getElementById('splash').classList.add('hidden');
-    resizeDisplay();
+    setupReticle();
+    window.addEventListener('resize', setupReticle);
     detecting = true;
-    scanTimer = setInterval(analyzeFrame, CFG.scanInterval);
-    if (debugMode) drawLoop();
+    scanTimer = setInterval(analyzeFrame, CFG.scanMs);
   } catch (e) {
     document.getElementById('btn-start').textContent = '◎  ABRIR CÂMERA';
     errEl.style.display = 'block';
-    errEl.textContent = e.name === 'NotAllowedError'
-      ? 'Permissão negada. Permite o acesso à câmera nas definições do browser.'
-      : e.name === 'NotFoundError'
-      ? 'Câmera não encontrada neste dispositivo.'
-      : 'Erro: ' + e.message + ' · Necessário HTTPS ou localhost.';
+    errEl.textContent =
+      e.name === 'NotAllowedError' ? 'Permissão de câmera negada. Vai às definições do browser e permite o acesso.' :
+      e.name === 'NotFoundError'   ? 'Câmera não encontrada neste dispositivo.' :
+      'Erro: ' + e.message + ' · É necessário HTTPS ou localhost.';
   }
 }
 
-function resizeDisplay() {
-  cDisp.width  = window.innerWidth;
-  cDisp.height = window.innerHeight;
+// ── RETICLE ────────────────────────────────────────────────
+function setupReticle() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const r  = Math.round(Math.min(vw, vh) * CFG.zoneSize / 2);
+  const cx = Math.round(vw / 2);
+  const cy = Math.round(vh * 0.42); // ligeiramente acima do centro
+
+  reticleScreen = { cx, cy, r };
+
+  const box = document.getElementById('reticle-box');
+  const wrap = document.getElementById('reticle-wrap');
+  const size = r * 2;
+  box.style.width  = size + 'px';
+  box.style.height = size + 'px';
+
+  // Centra o wrap no ponto (cx, cy)
+  wrap.style.top  = cy + 'px';
+  wrap.style.left = cx + 'px';
+  wrap.style.transform = 'translate(-50%, -50%)';
 }
 
-// ── DEBUG LOOP ───────────────────────────────────────────
-function drawLoop() {
-  if (!debugMode) { ctxDisp.clearRect(0,0,cDisp.width,cDisp.height); return; }
-  animFrame = requestAnimationFrame(drawLoop);
-}
-
-function toggleDebug() {
-  debugMode = !debugMode;
-  document.getElementById('btn-debug').textContent = debugMode ? 'DEBUG ON' : 'DEBUG OFF';
-  if (debugMode) drawLoop();
-  else { cancelAnimationFrame(animFrame); ctxDisp.clearRect(0,0,cDisp.width,cDisp.height); }
-}
-
-// ── ANÁLISE PRINCIPAL ────────────────────────────────────
+// ── ANÁLISE ────────────────────────────────────────────────
 function analyzeFrame() {
   if (!detecting || activePlanet) return;
   if (video.readyState < 2 || !video.videoWidth) return;
 
-  // Downscale para velocidade
   const vw = video.videoWidth, vh = video.videoHeight;
-  const scale = CFG.downscale / vw;
-  const W = CFG.downscale, H = Math.round(vh * scale);
+  const sw = window.innerWidth, sh = window.innerHeight;
+
+  // Mapeia zona do reticle para coordenadas do vídeo
+  // O vídeo está object-fit:cover — calcula o crop real
+  const vidAR   = vw / vh;
+  const scrAR   = sw / sh;
+  let   dispW, dispH, offX, offY;
+  if (vidAR > scrAR) {
+    // vídeo mais largo — cortado nas laterais
+    dispH = sh; dispW = sh * vidAR;
+    offX  = (dispW - sw) / 2; offY = 0;
+  } else {
+    // vídeo mais alto — cortado em cima/baixo
+    dispW = sw; dispH = sw / vidAR;
+    offX  = 0;  offY  = (dispH - sh) / 2;
+  }
+  const scaleX = vw / dispW;
+  const scaleY = vh / dispH;
+
+  const { cx: scx, cy: scy, r: sr } = reticleScreen;
+  // Zona no vídeo
+  const vcx = (scx + offX) * scaleX;
+  const vcy = (scy + offY) * scaleY;
+  const vr  = sr * scaleX;
+
+  // Extrai zona quadrada à volta do reticle
+  const cropSize = Math.round(vr * 2.1);
+  const cropX    = Math.max(0, Math.round(vcx - cropSize / 2));
+  const cropY    = Math.max(0, Math.round(vcy - cropSize / 2));
+  const cropW    = Math.min(cropSize, vw - cropX);
+  const cropH    = Math.min(cropSize, vh - cropY);
+  if (cropW < 20 || cropH < 20) return;
+
+  // Downscale para workSize
+  const W = CFG.workSize, H = CFG.workSize;
   cWork.width = W; cWork.height = H;
-  ctxWork.drawImage(video, 0, 0, W, H);
-  const imgData = ctxWork.getImageData(0, 0, W, H);
+  ctxW.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, W, H);
+  const imgData = ctxW.getImageData(0, 0, W, H);
 
-  // 1. Detetar bordas (Sobel simplificado)
-  const edges = detectEdges(imgData.data, W, H);
+  // Analisa dentro do círculo central (raio = W/2 * 0.85)
+  const scores = analyzeCircleZone(imgData.data, W, H);
 
-  // 2. Encontrar círculo candidato (Hough simplificado)
-  const circle = findCircle(edges, W, H);
+  if (debugOn) updateDebug(scores);
 
-  if (debugMode && circle) drawDebugCircle(circle, false, null, scale);
-
-  if (!circle) {
-    updateStatus(null);
-    return;
+  // Encontra planeta que corresponde
+  let matched = null;
+  for (const p of PLANETS) {
+    if (p.detect(scores)) { matched = p.id; break; }
   }
 
-  // 3. Verificar suporte (linha vertical abaixo do centro)
-  const hasStick = checkStick(imgData.data, W, H, circle);
-
-  // 4. Classificar cor dentro do círculo
-  const planetId = classifyPlanet(imgData.data, W, H, circle);
-
-  if (debugMode) drawDebugCircle(circle, hasStick, planetId, scale);
-
-  const valid = planetId && hasStick;
-  if (valid && planetId === lastId) {
+  // Sistema de hold — confirma após N frames seguidas
+  if (matched && matched === lastId) {
     holdCount++;
-    updateStatus('scanning', PLANETS.find(p => p.id === planetId)?.name || planetId);
-    if (holdCount >= CFG.holdFrames) confirmPlanet(planetId, circle);
+    setReticleState('confirming');
+    setStatus('confirming', PLANETS.find(p => p.id === matched).name);
+    setHoldBar(holdCount / CFG.holdFrames);
+    if (holdCount >= CFG.holdFrames) confirmPlanet(matched);
   } else {
-    holdCount = valid ? 1 : 0;
-    lastId = valid ? planetId : null;
-    updateStatus(valid ? 'maybe' : null);
+    holdCount = matched ? 1 : 0;
+    lastId    = matched || null;
+    if (!matched) {
+      setReticleState('idle');
+      setStatus('idle');
+      setHoldBar(0);
+    }
   }
 }
 
-// ── DETETOR DE BORDAS (Sobel) ────────────────────────────
-function detectEdges(data, W, H) {
+// ── ANÁLISE DE COR + FORMA NA ZONA CIRCULAR ───────────────
+function analyzeCircleZone(data, W, H) {
+  const cr = W * 0.42; // raio de análise (ligeiramente menor que a zona)
+  const cx = W / 2, cy = H / 2;
+  const cr2 = cr * cr;
+
+  let blue=0, green=0, red=0, brown=0, total=0;
+  // Para circularidade: conta pixels de borda dentro do anel externo
+  let edgeRing=0, edgeTotal=0;
+
+  // Sobel edges
   const gray = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) {
     const p = i * 4;
-    gray[i] = Math.round(0.299 * data[p] + 0.587 * data[p+1] + 0.114 * data[p+2]);
+    gray[i] = (data[p]*77 + data[p+1]*150 + data[p+2]*29) >> 8;
   }
-  const edges = new Uint8Array(W * H);
-  const T = CFG.edgeThreshold;
+
   for (let y = 1; y < H-1; y++) {
     for (let x = 1; x < W-1; x++) {
-      const i = y*W + x;
-      const gx = -gray[i-W-1] + gray[i-W+1] - 2*gray[i-1] + 2*gray[i+1] - gray[i+W-1] + gray[i+W+1];
-      const gy = -gray[i-W-1] - 2*gray[i-W] - gray[i-W+1] + gray[i+W-1] + 2*gray[i+W] + gray[i+W+1];
-      edges[i] = (Math.abs(gx) + Math.abs(gy)) > T ? 255 : 0;
-    }
-  }
-  return edges;
-}
+      const dx = x - cx, dy = y - cy;
+      const d2 = dx*dx + dy*dy;
+      if (d2 > cr2) continue;
 
-// ── HOUGH CIRCLE TRANSFORM (simplificado) ───────────────
-function findCircle(edges, W, H) {
-  const rMin = Math.round(W * CFG.minCircleRatio);
-  const rMax = Math.round(W * CFG.maxCircleRatio);
-  const rStep = 2;
-  const acc = {}; // acumulador {cx_cy_r: votes}
+      const i  = y*W + x;
+      const p  = i * 4;
+      const r  = data[p], g = data[p+1], b = data[p+2];
 
-  const edgePixels = [];
-  for (let i = 0; i < edges.length; i++) {
-    if (edges[i]) edgePixels.push([i % W, Math.floor(i / W)]);
-  }
+      // Ignora pixels muito escuros (sombras) e muito claros (reflexos)
+      const lum = (r + g + b) / 3;
+      if (lum < 25 || lum > 235) continue;
 
-  // Subsample para velocidade
-  const step = Math.max(1, Math.floor(edgePixels.length / 600));
+      total++;
 
-  for (let ei = 0; ei < edgePixels.length; ei += step) {
-    const [ex, ey] = edgePixels[ei];
-    for (let r = rMin; r <= rMax; r += rStep) {
-      // Testa 16 ângulos por pixel de borda
-      for (let a = 0; a < 16; a++) {
-        const angle = (a / 16) * Math.PI * 2;
-        const cx = Math.round(ex - r * Math.cos(angle));
-        const cy = Math.round(ey - r * Math.sin(angle));
-        if (cx < 0 || cx >= W || cy < 0 || cy >= H) continue;
-        // Quantiza centro para bucket de 4px
-        const bx = Math.round(cx / 4) * 4;
-        const by = Math.round(cy / 4) * 4;
-        const br = Math.round(r / rStep) * rStep;
-        const key = `${bx},${by},${br}`;
-        acc[key] = (acc[key] || 0) + 1;
+      // Classificação de cor
+      if (b > r && b > g && b > 55 && (b-r) > 18)  blue++;    // azul (oceanos)
+      if (g > r && g > b && g > 45 && (g-b) > 12)  green++;   // verde (vegetação)
+      if (r > g && r > b && r > 70 && (r-b) > 25)  red++;     // vermelho (marte)
+      if (r > 100 && r > b && g > b && r-b > 25 && Math.abs(r-g) < 60) brown++; // castanho/bege
+
+      // Bordas (Sobel) — só no anel externo (70-100% do raio)
+      const ringInner2 = cr2 * 0.49; // 70% do raio ao quadrado
+      if (d2 > ringInner2) {
+        edgeTotal++;
+        const gx = -gray[i-W-1] + gray[i-W+1] - 2*gray[i-1] + 2*gray[i+1] - gray[i+W-1] + gray[i+W+1];
+        const gy = -gray[i-W-1] - 2*gray[i-W] - gray[i-W+1] + gray[i+W-1] + 2*gray[i+W] + gray[i+W+1];
+        if ((Math.abs(gx) + Math.abs(gy)) > CFG.edgeThresh) edgeRing++;
       }
     }
   }
 
-  // Encontra o melhor candidato
-  let bestKey = null, bestVotes = 0;
-  const minVotes = 14;
-  for (const [key, v] of Object.entries(acc)) {
-    if (v > bestVotes) { bestVotes = v; bestKey = key; }
-  }
-  if (!bestKey || bestVotes < minVotes) return null;
+  if (total < 100) return { blue:0, green:0, red:0, brown:0, roundness:0, total };
 
-  const [cx, cy, r] = bestKey.split(',').map(Number);
+  const T = total;
+  // Circularidade: se há um objeto esférico, o anel externo terá bordas contínuas
+  // Mas o fundo liso NÃO terá bordas no anel
+  // Medimos a densidade de bordas no anel externo
+  const edgeDensity = edgeTotal > 0 ? edgeRing / edgeTotal : 0;
+  // Roundness: bordas moderadas no anel (nem nenhuma = fundo, nem muita = textura caótica)
+  const roundness = edgeDensity > 0.06 && edgeDensity < 0.65 ? Math.min(1, edgeDensity * 4) : 0;
 
-  // Verifica que o círculo está razoavelmente centrado na imagem
-  // (não nos cantos extremos)
-  if (cx < r * 0.3 || cx > W - r * 0.3) return null;
-  if (cy < r * 0.3 || cy > H - r * 1.8) return null; // permite espaço para o suporte abaixo
-
-  return { cx, cy, r, votes: bestVotes };
+  return {
+    blue:      blue  / T,
+    green:     green / T,
+    red:       red   / T,
+    brown:     brown / T,
+    roundness,
+    edgeDensity,
+    total,
+  };
 }
 
-// ── VERIFICAR SUPORTE (pau abaixo da esfera) ─────────────
-function checkStick(data, W, H, circle) {
-  const { cx, cy, r } = circle;
-  // Analisa uma faixa estreita centrada abaixo da esfera
-  const checkH = Math.round(H * CFG.stickRatio);
-  const startY = cy + r + 2;
-  const endY   = Math.min(H - 1, startY + checkH);
-  const halfW  = Math.max(3, Math.round(r * 0.18)); // largura da faixa
-
-  let brownCount = 0, total = 0;
-  for (let y = startY; y <= endY; y++) {
-    for (let x = cx - halfW; x <= cx + halfW; x++) {
-      if (x < 0 || x >= W) continue;
-      const p = (y * W + x) * 4;
-      const rr = data[p], g = data[p+1], b = data[p+2];
-      total++;
-      // Pau de madeira: castanho/bege/amarelado
-      // R > G > B e saturação moderada
-      if (rr > 100 && rr > g && g > b && (rr - b) > 20) brownCount++;
-    }
-  }
-  if (total === 0) return false;
-  return (brownCount / total) > 0.25;
-}
-
-// ── CLASSIFICAR PLANETA POR COR ──────────────────────────
-function classifyPlanet(data, W, H, circle) {
-  const { cx, cy, r } = circle;
-  const r2 = r * r * 0.75; // usa 87% do raio para evitar bordas
-
-  let counts = { blue:0, green:0, red:0, total:0 };
-
-  for (let y = cy - r; y <= cy + r; y++) {
-    for (let x = cx - r; x <= cx + r; x++) {
-      if (x < 0 || x >= W || y < 0 || y >= H) continue;
-      const dx = x - cx, dy = y - cy;
-      if (dx*dx + dy*dy > r2) continue;
-
-      const p = (y * W + x) * 4;
-      const rr = data[p], g = data[p+1], b = data[p+2];
-      counts.total++;
-
-      // Azul: b dominante e saturado
-      if (b > rr && b > g && b > 60 && (b - rr) > 15) counts.blue++;
-      // Verde: g dominante
-      if (g > rr && g > b && g > 50 && (g - b) > 10) counts.green++;
-      // Vermelho: r dominante
-      if (rr > g && rr > b && rr > 60 && (rr - b) > 20) counts.red++;
-    }
-  }
-
-  if (counts.total < 50) return null;
-
-  const blueR  = counts.blue  / counts.total;
-  const greenR = counts.green / counts.total;
-  const redR   = counts.red   / counts.total;
-
-  // Testa cada planeta
-  for (const planet of PLANETS) {
-    const d = planet.detect;
-    let match = true;
-
-    if (d.blueMin  !== undefined && blueR  < d.blueMin)  match = false;
-    if (d.greenMin !== undefined && greenR < d.greenMin)  match = false;
-    if (d.redMin   !== undefined && redR   < d.redMin)    match = false;
-    if (d.blueGtRed === true  && blueR <= redR)           match = false;
-    if (d.blueGtRed === false && redR  <= blueR)          match = false;
-
-    if (match) return planet.id;
-  }
-  return null;
-}
-
-// ── DEBUG VISUAL ─────────────────────────────────────────
-function drawDebugCircle(circle, hasStick, planetId, scale) {
-  if (!debugMode) return;
-  ctxDisp.clearRect(0, 0, cDisp.width, cDisp.height);
-  const dw = cDisp.width, dh = cDisp.height;
-  const vw = video.videoWidth, vh = video.videoHeight;
-  // Escala do canvas de trabalho para o display
-  const ws = CFG.downscale / vw;
-  const sx = dw / vw, sy = dh / vh;
-
-  const cx = (circle.cx / ws) * sx;
-  const cy = (circle.cy / ws) * sy;
-  const r  = (circle.r  / ws) * sx;
-
-  ctxDisp.strokeStyle = planetId ? '#00ff88' : (hasStick ? '#ffcc00' : '#ff4444');
-  ctxDisp.lineWidth = 2;
-  ctxDisp.beginPath();
-  ctxDisp.arc(cx, cy, r, 0, Math.PI*2);
-  ctxDisp.stroke();
-
-  // Centro
-  ctxDisp.fillStyle = '#00d4ff';
-  ctxDisp.beginPath();
-  ctxDisp.arc(cx, cy, 4, 0, Math.PI*2);
-  ctxDisp.fill();
-
-  // Label debug
-  ctxDisp.fillStyle = 'rgba(0,0,0,0.6)';
-  ctxDisp.fillRect(cx - 60, cy + r + 6, 120, 36);
-  ctxDisp.fillStyle = '#fff';
-  ctxDisp.font = '11px monospace';
-  ctxDisp.textAlign = 'center';
-  ctxDisp.fillText(`r=${Math.round(circle.r)} stick=${hasStick?'✓':'✗'}`, cx, cy + r + 20);
-  ctxDisp.fillText(`planet=${planetId || 'none'} hold=${holdCount}`, cx, cy + r + 34);
-}
-
-// ── STATUS HUD ───────────────────────────────────────────
-function updateStatus(state, name) {
-  const el = document.getElementById('hud-status');
-  if (!state) {
-    el.textContent = '● A PROCURAR';
-    el.className = '';
-  } else if (state === 'scanning') {
-    el.textContent = `● ${(name||'').toUpperCase()}?`;
-    el.className = 'scanning';
-  } else if (state === 'maybe') {
-    el.textContent = '● A CONFIRMAR...';
-    el.className = 'scanning';
-  }
-}
-
-// ── CONFIRMAR PLANETA ────────────────────────────────────
-function confirmPlanet(id, circle) {
+// ── CONFIRMAR PLANETA ─────────────────────────────────────
+function confirmPlanet(id) {
   clearInterval(scanTimer);
-  detecting = false;
+  detecting    = false;
   activePlanet = id;
 
   const planet = PLANETS.find(p => p.id === id);
-  if (!planet) return;
+  setReticleState('found');
+  setStatus('found', planet.name);
+  setHoldBar(1);
 
-  const el = document.getElementById('hud-status');
-  el.textContent = `● ${planet.name.toUpperCase()} DETETADO`;
-  el.className = 'found';
-
-  document.getElementById('hint').style.display = 'none';
-
-  // Posição real do círculo no ecrã
-  const dw = cDisp.width, dh = cDisp.height;
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const ws = CFG.downscale / vw;
-  const sx = dw / vw, sy = dh / vh;
-  const dotX = (circle.cx / ws) * sx;
-  const dotY = (circle.cy / ws) * sy;
-
-  showAROverlay(planet, dotX, dotY);
+  setTimeout(() => showARCard(planet), 300);
 }
 
-// ── MOSTRAR OVERLAY AR ────────────────────────────────────
-function showAROverlay(planet, dotX, dotY) {
-  document.getElementById('card-name').textContent  = planet.name;
-  document.getElementById('card-type').textContent  = planet.type;
-  document.getElementById('card-desc').textContent  = planet.descricao;
+// ── MOSTRAR CARD AR ───────────────────────────────────────
+function showARCard(planet) {
+  document.getElementById('card-name').textContent = planet.name;
+  document.getElementById('card-type').textContent = planet.type;
+  document.getElementById('card-desc').textContent = planet.descricao;
 
-  const dot = document.getElementById('card-dot');
-  dot.style.background = planet.gradient;
-  dot.style.boxShadow  = `inset -3px -3px 8px rgba(0,0,0,.5), 0 0 18px ${planet.glow}88`;
+  const g = document.getElementById('card-globe');
+  g.style.background = planet.gradient;
+  g.style.boxShadow  = `inset -4px -4px 10px rgba(0,0,0,.6), 0 0 20px ${planet.glow}88`;
 
   document.getElementById('card-stats').innerHTML = planet.stats.map(s =>
-    `<div class="c-stat"><div class="c-stat-lbl">${s.label}</div><div class="c-stat-val">${s.value}<span class="c-stat-u">${s.unit}</span></div></div>`
+    `<div class="c-s"><div class="c-sl">${s.label}</div><div class="c-sv">${s.value}<span class="c-su">${s.unit}</span></div></div>`
   ).join('');
 
-  const arDot = document.getElementById('ar-dot');
-  arDot.style.left = dotX + 'px';
-  arDot.style.top  = dotY + 'px';
+  // Ponto no centro do reticle
+  const { cx, cy } = reticleScreen;
+  const dot = document.getElementById('ar-dot');
+  dot.style.left = cx + 'px';
+  dot.style.top  = cy + 'px';
 
   document.getElementById('ar-overlay').classList.add('active');
 
   requestAnimationFrame(() => {
     const card   = document.getElementById('ar-card');
     const cw     = window.innerWidth, ch = window.innerHeight;
-    const cardW  = card.offsetWidth, cardH = card.offsetHeight;
+    const cardW  = card.offsetWidth,  cardH = card.offsetHeight;
     const margin = 12;
 
-    // Posiciona o card: prefere cima se o planeta está na metade inferior
-    let cardX = Math.max(margin, Math.min(cw - cardW - margin, dotX - cardW / 2));
-    let cardY = dotY > ch * 0.5
-      ? Math.max(margin, dotY - cardH - 60)
-      : Math.min(ch - cardH - margin, dotY + 60);
-    // Garante que o card nunca sai do ecrã verticalmente
+    // Card acima ou abaixo do planeta
+    let cardX = Math.max(margin, Math.min(cw - cardW - margin, cx - cardW / 2));
+    let cardY = cy > ch * 0.5
+      ? Math.max(margin, cy - reticleScreen.r - cardH - 20)
+      : Math.min(ch - cardH - margin, cy + reticleScreen.r + 20);
     cardY = Math.max(margin, Math.min(ch - cardH - margin, cardY));
 
     card.style.left = cardX + 'px';
     card.style.top  = cardY + 'px';
 
-    // Linha do dot até ao card
-    const lineEl = document.getElementById('ar-line');
-    const endX = cardX + cardW / 2;
-    const endY = cardY > dotY ? cardY : cardY + cardH;
-    lineEl.setAttribute('x1', dotX); lineEl.setAttribute('y1', dotY);
-    lineEl.setAttribute('x2', endX); lineEl.setAttribute('y2', endY);
+    // Linha SVG
+    const line = document.getElementById('ar-line');
+    const endY = cardY > cy ? cardY : cardY + cardH;
+    line.setAttribute('x1', cx); line.setAttribute('y1', cy);
+    line.setAttribute('x2', cardX + cardW / 2); line.setAttribute('y2', endY);
   });
 }
 
-// ── FECHAR AR ────────────────────────────────────────────
+// ── FECHAR AR ─────────────────────────────────────────────
 function closeAR() {
   document.getElementById('ar-overlay').classList.remove('active');
-  document.getElementById('hint').style.display = '';
   activePlanet = null;
-  lastId       = null;
   holdCount    = 0;
+  lastId       = null;
   detecting    = true;
-  updateStatus(null);
-  if (debugMode) { ctxDisp.clearRect(0,0,cDisp.width,cDisp.height); }
-  scanTimer = setInterval(analyzeFrame, CFG.scanInterval);
+  setReticleState('idle');
+  setStatus('idle');
+  setHoldBar(0);
+  scanTimer = setInterval(analyzeFrame, CFG.scanMs);
+}
+
+// ── UI HELPERS ────────────────────────────────────────────
+function setReticleState(state) {
+  const box = document.getElementById('reticle-box');
+  box.className = state === 'idle' ? '' : state;
+}
+
+function setStatus(state, name) {
+  const el = document.getElementById('hud-status');
+  const lbl = document.getElementById('ret-label');
+  const holdBarWrap = document.getElementById('hold-bar-wrap');
+  if (state === 'idle') {
+    el.textContent = '● A PROCURAR';
+    el.className   = '';
+    lbl.textContent = 'Centra o planeta aqui';
+    holdBarWrap.classList.remove('active');
+  } else if (state === 'confirming') {
+    el.textContent = `● ${(name||'').toUpperCase()} DETETADO`;
+    el.className   = 'confirming';
+    lbl.textContent = 'A confirmar...';
+    holdBarWrap.classList.add('active');
+  } else if (state === 'found') {
+    el.textContent = `● ${(name||'').toUpperCase()} ✓`;
+    el.className   = 'found';
+    lbl.textContent = '';
+  }
+}
+
+function setHoldBar(ratio) {
+  document.getElementById('hold-bar').style.width = Math.round(ratio * 100) + '%';
+}
+
+// ── DEBUG ─────────────────────────────────────────────────
+function toggleDebug() {
+  debugOn = !debugOn;
+  document.getElementById('debug-panel').classList.toggle('active', debugOn);
+  document.getElementById('btn-debug').textContent = debugOn ? 'DEBUG ON' : 'DEBUG';
+}
+
+function updateDebug(s) {
+  document.getElementById('debug-panel').innerHTML =
+    `blue:  ${(s.blue*100).toFixed(1)}%<br>` +
+    `green: ${(s.green*100).toFixed(1)}%<br>` +
+    `red:   ${(s.red*100).toFixed(1)}%<br>` +
+    `brown: ${(s.brown*100).toFixed(1)}%<br>` +
+    `round: ${(s.roundness*100).toFixed(1)}%<br>` +
+    `edges: ${(s.edgeDensity*100).toFixed(1)}%<br>` +
+    `total: ${s.total}px<br>` +
+    `hold:  ${holdCount}/${CFG.holdFrames}`;
 }
 
 window.addEventListener('resize', () => {
-  resizeDisplay();
   if (activePlanet) {
     const planet = PLANETS.find(p => p.id === activePlanet);
-    if (planet) {
-      const dw = cDisp.width, dh = cDisp.height;
-      showAROverlay(planet, dw/2, dh/2);
-    }
+    if (planet) showARCard(planet);
   }
 });
 </script>
