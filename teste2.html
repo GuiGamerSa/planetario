@@ -361,57 +361,68 @@ html, body {
     }
   });
 
-  function detect() {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    const W = 120, H = 90;
-    c.width = W; c.height = H;
+function detect() {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const W = 120, H = 90;
+  c.width = W; c.height = H;
 
-    const rx = W * 0.2 | 0, ry = H * 0.12 | 0;
-    const rw = W * 0.6 | 0, rh = H * 0.76 | 0;
+  const rx = W * 0.2 | 0, ry = H * 0.12 | 0;
+  const rw = W * 0.6 | 0, rh = H * 0.76 | 0;
 
-    function loop() {
-      if (!detecting) return;
-      try {
-        ctx.drawImage(video, 0, 0, W, H);
-        const d = ctx.getImageData(rx, ry, rw, rh).data;
-        let blue = 0, green = 0, brown = 0, dark = 0, tot = 0;
+  function loop() {
+    if (!detecting) return;
 
-        for (let i = 0; i < d.length; i += 12) {
-          const r = d[i], g = d[i+1], b = d[i+2];
-          tot++;
-          if (b > 70 && b > r * 1.1 && b > g * 0.9) blue++;
-          else if (g > 55 && g > r * 0.8 && g > b * 0.75 && (g - Math.min(r, b)) > 15) green++;
-          else if (r > 80 && g > 50 && g < r * 0.95 && b < r * 0.65) brown++;
-          else if (r < 55 && g < 55 && b < 70) dark++;
+    try {
+      ctx.drawImage(video, 0, 0, W, H);
+      const d = ctx.getImageData(rx, ry, rw, rh).data;
+
+      let blue = 0, green = 0, brown = 0, dark = 0, tot = 0;
+
+      for (let i = 0; i < d.length; i += 12) {
+        const r = d[i], g = d[i+1], b = d[i+2];
+        tot++;
+
+        if (b > 70 && b > r * 1.1 && b > g * 0.9) blue++;
+        else if (g > 55 && g > r * 0.8 && g > b * 0.75 && (g - Math.min(r, b)) > 15) green++;
+        else if (r > 80 && g > 50 && g < r * 0.95 && b < r * 0.65) brown++;
+        else if (r < 55 && g < 55 && b < 70) dark++;
+      }
+
+      if (tot > 0) {
+        const bp = blue/tot, gp = green/tot, brp = brown/tot, dp = dark/tot;
+        const earth = bp + gp + brp + dp;
+
+        let conf = 0;
+
+        if (earth > 0.25 && bp > 0.06 && (gp + brp) > 0.08) {
+          const bs = Math.min(bp / 0.24, 1.5);
+          const gs = Math.min(gp / 0.535, 1.5);
+          const ds = Math.min(dp / 0.182, 1.5);
+          conf = Math.min(1, earth * 1.05) * Math.min(1, bs * 0.35 + gs * 0.4 + ds * 0.25);
         }
 
-        if (tot > 0) {
-          const bp = blue/tot, gp = green/tot, brp = brown/tot, dp = dark/tot;
-          const earth = bp + gp + brp + dp;
-          let conf = 0;
+        smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
 
-          if (earth > 0.25 && bp > 0.06 && (gp + brp) > 0.08) {
-            const bs = Math.min(bp / 0.24, 1.5);
-            const gs = Math.min(gp / 0.535, 1.5);
-            const ds = Math.min(dp / 0.182, 1.5);
-            conf = Math.min(1, earth * 1.05) * Math.min(1, bs * 0.35 + gs * 0.4 + ds * 0.25);
-          }
+        const pct = Math.round(smoothConf * 100);
+        confFill.style.width = pct + '%';
+        confPct.textContent = pct + '%';
 
-          smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
-          const pct = Math.round(smoothConf * 100);
-          confFill.style.width = pct + '%';
-          confPct.textContent = pct + '%';
-          confFill.classList.toggle('high', smoothConf > DETECT_ON);
-          confWrap.classList.toggle('active', smoothConf > 0.12);
+        confFill.classList.toggle('high', smoothConf > DETECT_ON);
+        confWrap.classList.toggle('active', smoothConf > 0.12);
 
-          if (!isDetected && smoothConf >= DETECT_ON) show();
-          else if (isDetected && smoothConf < DETECT_OFF) hide();
-        }
-      } catch (e) {}
-      animationId = requestAnimationFrame(loop);
-    loop();
+        if (!isDetected && smoothConf >= DETECT_ON) show();
+        else if (isDetected && smoothConf < DETECT_OFF) hide();
+      }
+
+    } catch (e) {}
+
+    animationId = requestAnimationFrame(loop);
   }
+
+  // ✅ CHAMADA CORRETA (fora da função)
+  loop();
+}
 
   function stopAll() {
   detecting = false;
