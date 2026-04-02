@@ -361,85 +361,79 @@ html, body {
     }
   });
 
-  function detect() {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d', { willReadFrequently: true });
+function detect() {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d', { willReadFrequently: true });
 
-    const W = 100, H = 75;
-    c.width = W; c.height = H;
+  const W = 160, H = 120; // resolução maior para melhor deteção
+  c.width = W; c.height = H;
 
-    // ROI CENTRAL (ignora bordas)
-    const rx = W * 0.25 | 0;
-    const ry = H * 0.2 | 0;
-    const rw = W * 0.5 | 0;
-    const rh = H * 0.6 | 0;
+  // ROI CENTRAL (ignora bordas)
+  const rx = W * 0.25 | 0;
+  const ry = H * 0.2 | 0;
+  const rw = W * 0.5 | 0;
+  const rh = H * 0.6 | 0;
 
-    function loop() {
-      try {
-        ctx.drawImage(video, 0, 0, W, H);
-        const d = ctx.getImageData(rx, ry, rw, rh).data;
+  function loop() {
+    try {
+      ctx.drawImage(video, 0, 0, W, H);
+      const d = ctx.getImageData(rx, ry, rw, rh).data;
 
-        let blue = 0, green = 0, brown = 0, dark = 0;
-        let tot = 0;
+      let counts = { blue: 0, green: 0, brown: 0, dark: 0, light: 0 };
+      let tot = 0;
 
-        for (let i = 0; i < d.length; i += 16) { // menos pixels = mais FPS
-          const r = d[i], g = d[i+1], b = d[i+2];
-          tot++;
+      for (let i = 0; i < d.length; i += 12) { // mais pixels = mais precisão, menos = FPS melhor
+        const r = d[i], g = d[i+1], b = d[i+2];
 
-          if (b > 70 && b > r * 1.15 && b > g * 0.95) blue++;
-          else if (g > 60 && g > r * 0.8 && g > b * 0.75) green++;
-          else if (r > 90 && g > 60 && b < r * 0.6) brown++;
-          else if (r < 60 && g < 60 && b < 80) dark++;
+        tot++;
+        if (b > 80 && b > r * 1.2 && b > g * 1.05) counts.blue++;
+        else if (g > 70 && g > r * 0.85 && g > b * 0.8) counts.green++;
+        else if (r > 100 && g > 60 && b < r * 0.6) counts.brown++;
+        else if (r < 60 && g < 60 && b < 80) counts.dark++;
+        else if (r > 180 && g > 180 && b > 180) counts.light++;
+      }
+
+      let conf = 0;
+      if (tot > 0) {
+        const bp = counts.blue / tot;
+        const gp = counts.green / tot;
+        const brp = counts.brown / tot;
+        const dp = counts.dark / tot;
+        const lp = counts.light / tot;
+
+        const mix = bp + gp + brp; // ignorar luz muito forte (lp)
+        const diversity = Math.min(1, (bp*0.5 + gp*0.35 + brp*0.25 + dp*0.1));
+
+        // condição anti-falsos positivos
+        if (mix > 0.35 && bp > 0.08 && (gp + brp) > 0.15 && dp < 0.4) {
+          conf = Math.min(1, mix * diversity * 1.8);
         }
+      }
 
-        let conf = 0;
+      // suavização
+      smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
 
-        if (tot > 0) {
-          const bp = blue/tot;
-          const gp = green/tot;
-          const brp = brown/tot;
-          const dp = dark/tot;
+      const pct = Math.round(smoothConf * 100);
+      confFill.style.width = pct + '%';
+      confPct.textContent = pct + '%';
+      confFill.classList.toggle('high', smoothConf > DETECT_ON);
+      confWrap.classList.toggle('active', smoothConf > 0.1);
 
-          const mix = bp + gp + brp + dp;
+      const now = Date.now();
+      if (!isDetected && smoothConf >= DETECT_ON && (now - lastDetectTime > COOLDOWN)) {
+        show();
+        lastDetectTime = now;
+      } else if (isDetected && smoothConf <= DETECT_OFF) {
+        hide();
+      }
 
-          // 🔥 condição forte anti falso positivo
-          if (
-            mix > 0.35 &&
-            bp > 0.08 &&
-            (gp + brp) > 0.1
-          ) {
-            const diversity = (bp * 0.4 + gp * 0.3 + brp * 0.2 + dp * 0.1);
-            conf = Math.min(1, mix * 1.1 * diversity * 2);
-          }
-        }
+    } catch(e) { console.error(e); }
 
-        // suavização
-        smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
-
-        const pct = Math.round(smoothConf * 100);
-        confFill.style.width = pct + '%';
-        confPct.textContent = pct + '%';
-
-        confFill.classList.toggle('high', smoothConf > DETECT_ON);
-        confWrap.classList.toggle('active', smoothConf > 0.15);
-
-        const now = Date.now();
-
-        if (!isDetected && smoothConf >= DETECT_ON && (now - lastDetectTime > COOLDOWN)) {
-          show();
-          lastDetectTime = now;
-        }
-        else if (isDetected && smoothConf < DETECT_OFF) {
-          hide();
-        }
-
-      } catch (e) {}
-
-      requestAnimationFrame(loop);
-    }
-
-    loop();
+    requestAnimationFrame(loop);
   }
+
+  loop();
+}
 
   function show() {
     isDetected = true;
