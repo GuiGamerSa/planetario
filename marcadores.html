@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Marcadores — Planetas AR</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Exo 2', sans-serif; background: #f5f5f0; color: #111; }
+
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .page-break { page-break-before: always; }
+  .marker-card { box-shadow: none !important; border: 1px solid #ccc !important; break-inside: avoid; }
+}
+
+header {
+  background: #020818; color: #e8f4ff;
+  padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-family: 'Orbitron', monospace; font-size: 1.1rem; letter-spacing: .2em; }
+header p  { font-size: .7rem; color: rgba(160,200,255,.6); letter-spacing: .1em; margin-top: .3rem; }
+.btn-print {
+  font-family: 'Orbitron', monospace; font-size: .7rem; letter-spacing: .15em;
+  padding: .6rem 1.4rem; border: 1.5px solid #00d4ff; background: transparent;
+  color: #00d4ff; cursor: pointer; border-radius: 2px; transition: all .2s;
+}
+.btn-print:hover { background: #00d4ff; color: #020818; }
+
+.instructions {
+  max-width: 700px; margin: 1.5rem auto; padding: 0 1.5rem;
+  font-size: .82rem; line-height: 1.75; color: #444;
+}
+.instructions b { color: #020818; }
+.instructions ol { margin: .5rem 0 0 1.2rem; }
+.instructions li { margin-bottom: .3rem; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 900px;
+  margin: 1.5rem auto 3rem;
+  padding: 0 1.5rem;
+}
+
+.marker-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.1);
+  overflow: hidden;
+  break-inside: avoid;
+}
+.card-top {
+  padding: .75rem 1rem;
+  display: flex; align-items: center; gap: .75rem;
+  border-bottom: 1px solid #eee;
+}
+.planet-ball {
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: inset -3px -3px 8px rgba(0,0,0,.4);
+}
+.planet-name { font-family: 'Orbitron', monospace; font-size: .95rem; font-weight: 700; }
+.planet-type { font-size: .6rem; color: #888; letter-spacing: .15em; text-transform: uppercase; margin-top: 2px; }
+.marker-id   { margin-left: auto; font-size: .6rem; color: #bbb; font-family: monospace; }
+
+.marker-area {
+  padding: 1rem;
+  display: flex; flex-direction: column; align-items: center; gap: .75rem;
+  background: #fafafa;
+}
+
+/* SVG ArUco barcode markers — desenhados manualmente como grids 3x3 */
+.marker-svg {
+  width: 140px; height: 140px;
+  border: 8px solid #000; /* borda preta obrigatória */
+  background: #fff;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.marker-note {
+  font-size: .65rem; color: #999; text-align: center; letter-spacing: .05em;
+}
+.marker-label {
+  font-size: .75rem; font-weight: 600; color: #333;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+
+<header class="no-print" style="position:sticky;top:0;z-index:10">
+  <div>
+    <h1>COSMOS AR — Marcadores</h1>
+    <p>Imprime e cola em cada planeta · Marcadores ArUco 3×3</p>
+  </div>
+  <button class="btn-print" onclick="window.print()">🖨 IMPRIMIR</button>
+</header>
+
+<div class="instructions no-print">
+  <p>Como usar:</p>
+  <ol>
+    <li>Imprime esta página (ou cada marcador individualmente)</li>
+    <li><b>Recorta</b> cada marcador e cola na base ou no suporte do planeta correspondente</li>
+    <li>O marcador deve estar <b>bem visível e plano</b> — não dobrado nem amassado</li>
+    <li>Abre o site <b>planetas-ar.html</b> no telemóvel e aponta a câmera para o marcador</li>
+    <li>As informações aparecem automaticamente quando o marcador é detetado</li>
+  </ol>
+</div>
+
+<div class="grid" id="markers-grid"></div>
+
+<script>
+const PLANETS = [
+  { id: 'terra',    name: 'Terra',    type: '3.º do Sol', markerVal: 0,
+    gradient: 'radial-gradient(circle at 35% 35%, #7ac8f0, #1a6eb5 40%, #0a3060)',
+    // ArUco 3x3 barcode value 0 — padrão de bits: [0,0,0, 0,0,0, 0,0,0] + borda
+    // Os marcadores 3x3 do AR.js usam codificação BCH. Aqui representamos visualmente.
+    bits: [0,0,0, 0,0,0, 0,0,0]
+  },
+  { id: 'marte',    name: 'Marte',    type: '4.º do Sol', markerVal: 1,
+    gradient: 'radial-gradient(circle at 35% 35%, #e87858, #c04020 50%, #601808)',
+    bits: [1,0,0, 0,0,0, 0,0,1]
+  },
+  { id: 'jupiter',  name: 'Júpiter',  type: '5.º do Sol', markerVal: 2,
+    gradient: 'radial-gradient(circle at 35% 35%, #e8d0a0, #b88040 40%, #705018)',
+    bits: [0,1,0, 0,0,0, 0,1,0]
+  },
+  { id: 'saturno',  name: 'Saturno',  type: '6.º do Sol', markerVal: 3,
+    gradient: 'radial-gradient(circle at 35% 35%, #f0e090, #c8a828 50%, #806010)',
+    bits: [1,1,0, 0,0,0, 0,1,1]
+  },
+  { id: 'venus',    name: 'Vénus',    type: '2.º do Sol', markerVal: 4,
+    gradient: 'radial-gradient(circle at 35% 35%, #f5e0a0, #d4a840 50%, #7a5808)',
+    bits: [0,0,1, 0,0,0, 1,0,0]
+  },
+  { id: 'mercurio', name: 'Mercúrio', type: '1.º do Sol', markerVal: 5,
+    gradient: 'radial-gradient(circle at 35% 35%, #c4b4a4, #8a7060 50%, #50382c)',
+    bits: [1,0,1, 0,0,0, 1,0,1]
+  },
+];
+
+// Gera SVG de um marcador 3x3 ArUco-like
+// A borda exterior é sempre preta (já feita via CSS border)
+// A grelha interior 3x3 representa o valor
+function markerSVG(bits) {
+  const cell = 28; // tamanho de cada célula em px
+  const pad  = 6;  // padding interior branco
+  const size = cell * 3 + pad * 2;
+  let rects = '';
+  for (let i = 0; i < 9; i++) {
+    const row = Math.floor(i / 3);
+    const col = i % 3;
+    const x = pad + col * cell;
+    const y = pad + row * cell;
+    const fill = bits[i] ? '#000000' : '#ffffff';
+    rects += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" fill="${fill}"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="124" height="124">
+    <rect width="${size}" height="${size}" fill="#fff"/>
+    ${rects}
+  </svg>`;
+}
+
+const grid = document.getElementById('markers-grid');
+PLANETS.forEach(p => {
+  const card = document.createElement('div');
+  card.className = 'marker-card';
+  card.innerHTML = `
+    <div class="card-top">
+      <div class="planet-ball" style="background:${p.gradient}"></div>
+      <div>
+        <div class="planet-name">${p.name}</div>
+        <div class="planet-type">${p.type}</div>
+      </div>
+      <div class="marker-id">ID: ${p.markerVal}</div>
+    </div>
+    <div class="marker-area">
+      <div class="marker-svg">${markerSVG(p.bits)}</div>
+      <div class="marker-label">${p.name.toUpperCase()}</div>
+      <div class="marker-note">Recorta e cola no suporte do planeta</div>
+    </div>
+  `;
+  grid.appendChild(card);
+});
+</script>
+</body>
+</html>
