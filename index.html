@@ -258,7 +258,6 @@ async function startCamera() {
     await video.play();
     document.getElementById('splash').classList.add('hidden');
     resizeDisplay();
-    window.addEventListener('resize', resizeDisplay);
     detecting = true;
     scanTimer = setInterval(analyzeFrame, CFG.scanInterval);
     if (debugMode) drawLoop();
@@ -310,7 +309,7 @@ function analyzeFrame() {
   // 2. Encontrar círculo candidato (Hough simplificado)
   const circle = findCircle(edges, W, H);
 
-  if (debugMode && circle) drawDebug(circle, W, H, scale);
+  if (debugMode && circle) drawDebugCircle(circle, false, null, scale);
 
   if (!circle) {
     updateStatus(null);
@@ -329,7 +328,7 @@ function analyzeFrame() {
   if (valid && planetId === lastId) {
     holdCount++;
     updateStatus('scanning', PLANETS.find(p => p.id === planetId)?.name || planetId);
-    if (holdCount >= CFG.holdFrames) confirmPlanet(planetId, circle, scale);
+    if (holdCount >= CFG.holdFrames) confirmPlanet(planetId, circle);
   } else {
     holdCount = valid ? 1 : 0;
     lastId = valid ? planetId : null;
@@ -393,7 +392,7 @@ function findCircle(edges, W, H) {
 
   // Encontra o melhor candidato
   let bestKey = null, bestVotes = 0;
-  const minVotes = 8;
+  const minVotes = 14;
   for (const [key, v] of Object.entries(acc)) {
     if (v > bestVotes) { bestVotes = v; bestKey = key; }
   }
@@ -534,7 +533,7 @@ function updateStatus(state, name) {
 }
 
 // ── CONFIRMAR PLANETA ────────────────────────────────────
-function confirmPlanet(id, circle, scale) {
+function confirmPlanet(id, circle) {
   clearInterval(scanTimer);
   detecting = false;
   activePlanet = id;
@@ -590,6 +589,8 @@ function showAROverlay(planet, dotX, dotY) {
     let cardY = dotY > ch * 0.5
       ? Math.max(margin, dotY - cardH - 60)
       : Math.min(ch - cardH - margin, dotY + 60);
+    // Garante que o card nunca sai do ecrã verticalmente
+    cardY = Math.max(margin, Math.min(ch - cardH - margin, cardY));
 
     card.style.left = cardX + 'px';
     card.style.top  = cardY + 'px';
