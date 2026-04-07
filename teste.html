@@ -15,6 +15,7 @@
   --accent-glow: rgba(78, 168, 255, 0.3);
   --green: #34d399;
   --green-glow: rgba(52, 211, 153, 0.25);
+  --red: #ff5577;
   --cyan: #00e5c8;
   --text: #eef1f8;
   --text-sec: rgba(238, 241, 248, 0.55);
@@ -110,6 +111,38 @@ html, body {
 .scan-bar.detected .scan-bar-dot { background: var(--green); animation: none; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
 
+/* ═══ DEBUG PANEL ═══ */
+.debug-panel {
+  position: fixed;
+  top: 70px; right: 12px;
+  z-index: 50;
+  background: rgba(6, 6, 12, 0.85);
+  border: 1px solid rgba(78, 168, 255, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--text-sec);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  min-width: 130px;
+  pointer-events: auto;
+}
+.debug-row { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+.debug-row .v { color: var(--text); font-weight: 700; }
+.debug-row .v.ok { color: var(--green); }
+.debug-row .v.bad { color: var(--red); }
+.debug-toggle {
+  position: fixed; top: 70px; left: 12px; z-index: 50;
+  background: rgba(6,6,12,0.85);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-sec);
+  padding: 6px 12px; border-radius: 100px;
+  font-family: 'Space Mono', monospace; font-size: 10px;
+  pointer-events: auto; cursor: pointer;
+}
+
+/* ═══ INFO PANEL ═══ */
 .info-panel {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
   transform: translateY(100%); transition: transform 0.6s cubic-bezier(0.16,1,0.3,1);
@@ -220,6 +253,22 @@ html, body {
 
 <video id="camera" autoplay playsinline muted></video>
 
+<!-- DEBUG -->
+<button class="debug-toggle" id="debugToggle">DEBUG</button>
+<div class="debug-panel" id="debugPanel" style="display:none">
+  <div class="debug-row"><span>earth</span><span class="v" id="dEarth">0%</span></div>
+  <div class="debug-row"><span>blue</span><span class="v" id="dBlue">0%</span></div>
+  <div class="debug-row"><span>green</span><span class="v" id="dGreen">0%</span></div>
+  <div class="debug-row"><span>brown</span><span class="v" id="dBrown">0%</span></div>
+  <div class="debug-row"><span>dark</span><span class="v" id="dDark">0%</span></div>
+  <div class="debug-row"><span>compact</span><span class="v" id="dComp">0</span></div>
+  <div class="debug-row"><span>centered</span><span class="v" id="dCenter">0</span></div>
+  <div class="debug-row"><span>━━━━━━</span><span></span></div>
+  <div class="debug-row"><span>size</span><span class="v" id="dSize">-</span></div>
+  <div class="debug-row"><span>mix</span><span class="v" id="dMix">-</span></div>
+  <div class="debug-row"><span>shape</span><span class="v" id="dShape">-</span></div>
+</div>
+
 <div class="scan-ui">
   <div class="top-bar">
     <div class="logo"><div class="logo-dot"></div>PlanetAR</div>
@@ -304,7 +353,6 @@ html, body {
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-
   const video = $('camera');
   const reticle = $('reticle');
   const statusChip = $('statusChip');
@@ -313,16 +361,23 @@ html, body {
   const confFill = $('confFill');
   const confPct = $('confPct');
   const confWrap = $('confWrap');
+  const debugPanel = $('debugPanel');
+  const debugToggle = $('debugToggle');
 
   let isDetected = false;
   let smoothConf = 0;
   let lastDetectTime = 0;
+  let debugOn = false;
 
-  // Thresholds — exigentes para evitar falsos positivos
-  const DETECT_ON = 0.70;
-  const DETECT_OFF = 0.35;
-  const SMOOTH = 0.18;
+  const DETECT_ON = 0.62;
+  const DETECT_OFF = 0.30;
+  const SMOOTH = 0.20;
   const COOLDOWN = 1500;
+
+  debugToggle.addEventListener('click', () => {
+    debugOn = !debugOn;
+    debugPanel.style.display = debugOn ? 'block' : 'none';
+  });
 
   $('startBtn').addEventListener('click', async () => {
     try {
@@ -339,96 +394,97 @@ html, body {
     }
   });
 
-  // ─────────────────────────────────────────────────────────
-  // DETEÇÃO MULTI-CRITÉRIO:
-  // 1. Perfil de cor da Terra (azul + verde + escuro)
-  // 2. Forma circular (blob central rodeado de fundo)
-  // 3. Fundo neutro/claro (parede, não ecrã)
-  // 4. Saturação variada (não cores puras de monitor)
-  // ─────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // DETEÇÃO: foco no CENTRO do frame (onde o utilizador aponta)
+  // ═══════════════════════════════════════════════════════════
   function detect() {
     const c = document.createElement('canvas');
     const ctx = c.getContext('2d', { willReadFrequently: true });
     const W = 80, H = 60;
     c.width = W; c.height = H;
 
+    // Região de análise: centro do frame (onde está o retículo)
+    // 50% central horizontalmente, 60% central verticalmente
+    const RX = (W * 0.25) | 0;
+    const RY = (H * 0.20) | 0;
+    const RW = (W * 0.50) | 0;
+    const RH = (H * 0.60) | 0;
+
     function loop() {
       try {
         ctx.drawImage(video, 0, 0, W, H);
-        const full = ctx.getImageData(0, 0, W, H).data;
+        const full = ctx.getImageData(RX, RY, RW, RH).data;
 
-        // Mapa binário: 1 = pixel "tipo Terra", 0 = não
-        const earthMap = new Uint8Array(W * H);
-        // Mapa binário: 1 = pixel "fundo neutro/claro"
-        const bgMap = new Uint8Array(W * H);
+        const earthMap = new Uint8Array(RW * RH);
+        let earthCount = 0;
+        let blueCount = 0, greenCount = 0, brownCount = 0, darkCount = 0;
 
-        let earthCount = 0, bgCount = 0;
-        let blueCount = 0, greenCount = 0, darkCount = 0, brownCount = 0;
-
-        for (let y = 0; y < H; y++) {
-          for (let x = 0; x < W; x++) {
-            const i = (y * W + x) * 4;
+        for (let y = 0; y < RH; y++) {
+          for (let x = 0; x < RW; x++) {
+            const i = (y * RW + x) * 4;
             const r = full[i], g = full[i+1], b = full[i+2];
 
-            // Detetar fundo neutro/claro (parede): RGB altos e próximos
             const maxC = Math.max(r, g, b);
             const minC = Math.min(r, g, b);
             const range = maxC - minC;
+            const sat = maxC === 0 ? 0 : range / maxC;
             const lum = (r + g + b) / 3;
 
-            if (lum > 140 && range < 45) {
-              bgMap[y * W + x] = 1;
-              bgCount++;
-              continue;
+            // ─── PIXEL TIPO TERRA ─────────────────────
+            // Azul oceano: dominância de azul
+            if (b > 60 && b > r * 1.1 && b > g * 0.9 && sat > 0.2) {
+              blueCount++;
+              earthMap[y * RW + x] = 1;
+              earthCount++;
             }
-
-            // Saturação HSV simplificada
-            const sat = maxC === 0 ? 0 : range / maxC;
-
-            // Pixel tipo Terra
-            let isEarth = false;
-            if (b > 65 && b > r * 1.1 && b > g * 0.85 && sat > 0.25) {
-              blueCount++; isEarth = true;
-            } else if (g > 55 && g > r * 0.85 && g > b * 0.7 && (g - Math.min(r, b)) > 12 && sat > 0.2) {
-              greenCount++; isEarth = true;
-            } else if (r > 85 && g > 55 && g < r * 0.95 && b < r * 0.7 && sat > 0.2) {
-              brownCount++; isEarth = true;
-            } else if (r < 55 && g < 55 && b < 75 && lum < 50) {
-              darkCount++; isEarth = true;
+            // Verde terra: dominância de verde com saturação
+            else if (g > 50 && g > r && g > b * 0.7 && sat > 0.18 && lum < 180) {
+              greenCount++;
+              earthMap[y * RW + x] = 1;
+              earthCount++;
             }
-
-            if (isEarth) {
-              earthMap[y * W + x] = 1;
+            // Castanho/areia: vermelho > verde > azul, saturado, luminoso médio
+            // CUIDADO: chão de madeira também é castanho — exigir saturação alta
+            else if (r > 100 && g > 60 && g < r * 0.92 && b < g * 0.85 && sat > 0.30 && lum > 80 && lum < 180) {
+              brownCount++;
+              earthMap[y * RW + x] = 1;
+              earthCount++;
+            }
+            // Escuro (oceano profundo / sombras na maquete)
+            else if (r < 60 && g < 70 && b < 90 && b >= r && lum < 60) {
+              darkCount++;
+              earthMap[y * RW + x] = 1;
               earthCount++;
             }
           }
         }
 
-        const totalPx = W * H;
+        const totalPx = RW * RH;
         const earthRatio = earthCount / totalPx;
-        const bgRatio = bgCount / totalPx;
+        const blueRatio = earthCount > 0 ? blueCount / earthCount : 0;
+        const greenRatio = earthCount > 0 ? greenCount / earthCount : 0;
+        const brownRatio = earthCount > 0 ? brownCount / earthCount : 0;
+        const darkRatio = earthCount > 0 ? darkCount / earthCount : 0;
+        const landRatio = greenRatio + brownRatio;
 
         let conf = 0;
+        let compactness = 0;
+        let centerScore = 0;
 
-        // ─── CRITÉRIOS DE QUALIFICAÇÃO (todos têm de passar) ───
-        // 1. Quantidade razoável de pixels Terra (esfera ocupa ~25-60% do frame)
-        const sizeOK = earthRatio > 0.18 && earthRatio < 0.70;
-        // 2. Tem fundo claro/neutro (parede) — fundamental para distinguir de ecrãs
-        const bgOK = bgRatio > 0.12;
-        // 3. Mistura de cores Terra (azul obrigatório + verde ou castanho)
-        const blueRatio = blueCount / Math.max(earthCount, 1);
-        const landRatio = (greenCount + brownCount) / Math.max(earthCount, 1);
-        const mixOK = blueRatio > 0.15 && landRatio > 0.15;
-        // 4. Não pode estar dominado por uma só cor (ecrã com vídeo azul, etc)
-        const notDominated = blueRatio < 0.85 && landRatio < 0.85;
+        // ─── CRITÉRIOS DE BASE ─────────────────────────────
+        // Tamanho: a esfera deve ocupar uma porção razoável do centro
+        const sizeOK = earthRatio > 0.20 && earthRatio < 0.92;
+        // Mistura: precisa de azul E (verde ou castanho)
+        const mixOK = blueRatio > 0.10 && landRatio > 0.10;
+        // Não pode ser dominado por uma só cor
+        const notDominated = blueRatio < 0.88 && landRatio < 0.88;
 
-        if (sizeOK && bgOK && mixOK && notDominated) {
-          // ─── VERIFICAÇÃO DE FORMA: blob central circular ───
-          // Calcular centro de massa dos pixels Terra
+        if (sizeOK && mixOK && notDominated) {
+          // ─── FORMA: blob compacto e centrado ─────────────
           let sumX = 0, sumY = 0;
-          for (let y = 0; y < H; y++) {
-            for (let x = 0; x < W; x++) {
-              if (earthMap[y * W + x]) {
+          for (let y = 0; y < RH; y++) {
+            for (let x = 0; x < RW; x++) {
+              if (earthMap[y * RW + x]) {
                 sumX += x; sumY += y;
               }
             }
@@ -436,39 +492,36 @@ html, body {
           const cx = sumX / earthCount;
           const cy = sumY / earthCount;
 
-          // Distância ao centro do frame
-          const frameCx = W / 2, frameCy = H / 2;
-          const offCenter = Math.hypot(cx - frameCx, cy - frameCy) / (W / 2);
+          // Centrado no meio da região analisada
+          const fcx = RW / 2, fcy = RH / 2;
+          const off = Math.hypot(cx - fcx, cy - fcy) / (RW / 2);
+          centerScore = Math.max(0, 1 - off);
 
-          // Verificar compactness (raio médio vs área)
+          // Compactness — soma das distâncias ao centro
           let sumR = 0;
-          for (let y = 0; y < H; y++) {
-            for (let x = 0; x < W; x++) {
-              if (earthMap[y * W + x]) {
+          for (let y = 0; y < RH; y++) {
+            for (let x = 0; x < RW; x++) {
+              if (earthMap[y * RW + x]) {
                 sumR += Math.hypot(x - cx, y - cy);
               }
             }
           }
           const avgR = sumR / earthCount;
           const expectedR = Math.sqrt(earthCount / Math.PI);
-          // Para um círculo perfeito, avgR ≈ (2/3) * expectedR
-          const compactness = expectedR > 0 ? Math.min(1, (2 * expectedR / 3) / avgR) : 0;
+          // Para um disco perfeito: avgR = (2/3) * expectedR
+          // Quanto mais próximo, mais "redondo"
+          compactness = expectedR > 0 ? Math.min(1, (2 * expectedR / 3) / Math.max(avgR, 0.1)) : 0;
 
-          // Verificar que o blob está rodeado de fundo (não toca nas bordas demasiado)
-          let edgeTouches = 0;
-          for (let x = 0; x < W; x++) {
-            if (earthMap[x] || earthMap[(H - 1) * W + x]) edgeTouches++;
-          }
-          for (let y = 0; y < H; y++) {
-            if (earthMap[y * W] || earthMap[y * W + (W - 1)]) edgeTouches++;
-          }
-          const edgeRatio = edgeTouches / (2 * (W + H));
-          const isolated = edgeRatio < 0.25;
-
-          // Score final
-          if (offCenter < 0.6 && compactness > 0.55 && isolated) {
-            const centerScore = 1 - offCenter;
-            conf = (centerScore * 0.3 + compactness * 0.4 + Math.min(1, earthRatio * 3) * 0.3);
+          // Score final — pesos calibrados
+          if (compactness > 0.45 && centerScore > 0.25) {
+            const earthScore = Math.min(1, earthRatio * 1.5);
+            const mixScore = Math.min(1, (blueRatio + landRatio) * 1.2);
+            conf = (
+              compactness * 0.35 +
+              centerScore * 0.25 +
+              earthScore * 0.20 +
+              mixScore * 0.20
+            );
           }
         }
 
@@ -478,7 +531,31 @@ html, body {
         confFill.style.width = pct + '%';
         confPct.textContent = pct + '%';
         confFill.classList.toggle('high', smoothConf > DETECT_ON);
-        confWrap.classList.toggle('active', smoothConf > 0.15);
+        confWrap.classList.toggle('active', true);
+
+        // ─── DEBUG ───
+        if (debugOn) {
+          $('dEarth').textContent = (earthRatio * 100).toFixed(0) + '%';
+          $('dBlue').textContent = (blueRatio * 100).toFixed(0) + '%';
+          $('dGreen').textContent = (greenRatio * 100).toFixed(0) + '%';
+          $('dBrown').textContent = (brownRatio * 100).toFixed(0) + '%';
+          $('dDark').textContent = (darkRatio * 100).toFixed(0) + '%';
+          $('dComp').textContent = compactness.toFixed(2);
+          $('dCenter').textContent = centerScore.toFixed(2);
+
+          const sizeEl = $('dSize');
+          sizeEl.textContent = sizeOK ? 'OK' : 'FAIL';
+          sizeEl.className = 'v ' + (sizeOK ? 'ok' : 'bad');
+
+          const mixEl = $('dMix');
+          mixEl.textContent = mixOK ? 'OK' : 'FAIL';
+          mixEl.className = 'v ' + (mixOK ? 'ok' : 'bad');
+
+          const shapeEl = $('dShape');
+          const shapeOK = compactness > 0.45 && centerScore > 0.25;
+          shapeEl.textContent = shapeOK ? 'OK' : 'FAIL';
+          shapeEl.className = 'v ' + (shapeOK ? 'ok' : 'bad');
+        }
 
         const now = Date.now();
         if (!isDetected && smoothConf >= DETECT_ON && (now - lastDetectTime > COOLDOWN)) {
