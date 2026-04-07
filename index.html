@@ -454,11 +454,23 @@ const PLANETS = [
 
   let isStarted = false;
   let currentPlanet = -1;
+  let hideTimer = null;
+  const HIDE_DELAY = 5000; // 5 segundos antes de fechar quando perde o target
 
   // ── Preencher o card com dados do planeta detetado ──
   function showPlanet(index) {
+    // Cancelar qualquer fecho pendente
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+
     const p = PLANETS[index];
     if (!p) return;
+
+    // Se já é o mesmo planeta e o card já está visível, não faz nada
+    if (currentPlanet === index && infoPanel.classList.contains('visible')) return;
+
     currentPlanet = index;
 
     $('planetIcon').style.background = p.gradient;
@@ -487,6 +499,11 @@ const PLANETS = [
   }
 
   function hideCard() {
+    // Cancelar qualquer timer pendente
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
     currentPlanet = -1;
     reticle.classList.remove('detected');
     statusChip.textContent = 'A PROCURAR';
@@ -495,6 +512,17 @@ const PLANETS = [
     scanBar.classList.remove('detected');
     scanBarText.textContent = 'A analisar imagem...';
     infoPanel.classList.remove('visible');
+  }
+
+  // Esconder com delay — se o planeta voltar a ser detetado, cancela o fecho
+  function scheduleHide() {
+    if (hideTimer) clearTimeout(hideTimer);
+    // Feedback visual subtil: muda o status para "fora de vista"
+    statusChip.textContent = '⏱ A AGUARDAR';
+    hideTimer = setTimeout(() => {
+      hideTimer = null;
+      hideCard();
+    }, HIDE_DELAY);
   }
 
   // ── Iniciar MindAR (via A-Frame) ──
@@ -552,7 +580,7 @@ const PLANETS = [
           });
 
           entity.addEventListener('targetLost', () => {
-            if (currentPlanet === i) hideCard();
+            if (currentPlanet === i) scheduleHide();
           });
         }
       };
