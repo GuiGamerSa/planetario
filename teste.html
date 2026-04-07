@@ -338,7 +338,7 @@ html, body {
   });
 
   // Buffers reutilizados (criados uma só vez)
-  const W = 80, H = 60;
+  const W = 60, H = 45;
   const RX = (W * 0.25) | 0;
   const RY = (H * 0.20) | 0;
   const RW = (W * 0.50) | 0;
@@ -349,7 +349,7 @@ html, body {
   let detectCanvas = null;
   let detectCtx = null;
   let lastFrameTime = 0;
-  const FRAME_INTERVAL = 50; // ~20fps em vez de 60fps
+  const FRAME_INTERVAL = 33; // ~30fps
   let pageVisible = true;
   let lastPct = -1;
 
