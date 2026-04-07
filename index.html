@@ -42,8 +42,35 @@ html, body {
 a-scene {
   position: fixed !important;
   inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  z-index: 0 !important;
+}
+
+/* Esconder UI nativa do A-Frame (botão VR, loading, etc) */
+.a-enter-vr,
+.a-enter-ar,
+.a-orientation-modal,
+.a-loader-title,
+.a-modal {
+  display: none !important;
+}
+
+/* O canvas do A-Frame deve cobrir tudo */
+a-scene .a-canvas {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+}
+
+/* O video da câmara (injetado pelo MindAR) */
+video {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  object-fit: cover !important;
   z-index: 0 !important;
 }
 
@@ -205,25 +232,8 @@ a-scene {
 </head>
 <body>
 
-<!-- A-Frame scene com MindAR -->
-<a-scene
-  id="arScene"
-  mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 1; uiLoading: no; uiScanning: no; uiError: no;"
-  color-space="sRGB"
-  embedded
-  renderer="colorManagement: true, physicallyCorrectLights"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: false">
-  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-  <a-entity id="t0" mindar-image-target="targetIndex: 0"></a-entity>
-  <a-entity id="t1" mindar-image-target="targetIndex: 1"></a-entity>
-  <a-entity id="t2" mindar-image-target="targetIndex: 2"></a-entity>
-  <a-entity id="t3" mindar-image-target="targetIndex: 3"></a-entity>
-  <a-entity id="t4" mindar-image-target="targetIndex: 4"></a-entity>
-  <a-entity id="t5" mindar-image-target="targetIndex: 5"></a-entity>
-  <a-entity id="t6" mindar-image-target="targetIndex: 6"></a-entity>
-  <a-entity id="t7" mindar-image-target="targetIndex: 7"></a-entity>
-</a-scene>
+<!-- A-Frame scene será inserida aqui ao clicar em "Iniciar Câmara" -->
+<div id="sceneHost"></div>
 
 <div class="scan-ui">
   <div class="top-bar">
@@ -493,26 +503,65 @@ const PLANETS = [
     isStarted = true;
 
     try {
-      // Pedir permissão da câmara explicitamente para mostrar erro cedo
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      // Libertar imediatamente — o MindAR vai pedir a sua própria câmara
-      stream.getTracks().forEach(t => t.stop());
-
-      // Registar listeners em cada target (0..7)
-      for (let i = 0; i < PLANETS.length; i++) {
-        const entity = $('t' + i);
-        if (!entity) continue;
-
-        entity.addEventListener('targetFound', () => {
-          showPlanet(i);
-        });
-
-        entity.addEventListener('targetLost', () => {
-          if (currentPlanet === i) hideCard();
-        });
+      // 1. Verificar se MindAR carregou
+      if (!window.AFRAME || !window.AFRAME.components || !window.AFRAME.components['mindar-image']) {
+        throw new Error('MindAR não carregou. Verifica a tua ligação à internet.');
       }
 
+      // 2. Verificar se o targets.mind existe
+      const r = await fetch('./targets.mind', { method: 'HEAD' });
+      if (!r.ok) {
+        throw new Error('Ficheiro targets.mind não encontrado (' + r.status + '). Coloca-o ao lado do index.html.');
+      }
+
+      // 3. Esconder ecrã inicial
       $('startScreen').classList.add('hidden');
+
+      // 4. Criar a scene A-Frame dinamicamente
+      const host = $('sceneHost');
+      host.innerHTML = `
+        <a-scene
+          id="arScene"
+          mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 1; uiLoading: no; uiScanning: no; uiError: no; autoStart: true;"
+          color-space="sRGB"
+          embedded
+          renderer="colorManagement: true, physicallyCorrectLights"
+          vr-mode-ui="enabled: false"
+          device-orientation-permission-ui="enabled: false">
+          <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+          <a-entity id="t0" mindar-image-target="targetIndex: 0"></a-entity>
+          <a-entity id="t1" mindar-image-target="targetIndex: 1"></a-entity>
+          <a-entity id="t2" mindar-image-target="targetIndex: 2"></a-entity>
+          <a-entity id="t3" mindar-image-target="targetIndex: 3"></a-entity>
+          <a-entity id="t4" mindar-image-target="targetIndex: 4"></a-entity>
+          <a-entity id="t5" mindar-image-target="targetIndex: 5"></a-entity>
+          <a-entity id="t6" mindar-image-target="targetIndex: 6"></a-entity>
+          <a-entity id="t7" mindar-image-target="targetIndex: 7"></a-entity>
+        </a-scene>
+      `;
+
+      // 5. Esperar a scene carregar antes de adicionar listeners
+      const scene = $('arScene');
+      const setupListeners = () => {
+        for (let i = 0; i < PLANETS.length; i++) {
+          const entity = $('t' + i);
+          if (!entity) continue;
+
+          entity.addEventListener('targetFound', () => {
+            showPlanet(i);
+          });
+
+          entity.addEventListener('targetLost', () => {
+            if (currentPlanet === i) hideCard();
+          });
+        }
+      };
+
+      if (scene.hasLoaded) {
+        setupListeners();
+      } else {
+        scene.addEventListener('loaded', setupListeners);
+      }
 
     } catch (err) {
       console.error('Erro ao iniciar:', err);
