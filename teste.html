@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>PlanetAR</title>
+<title>PlanetAR — Terra</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
@@ -232,7 +232,7 @@ html, body {
     <div class="corner-mark bl"></div>
     <div class="corner-mark br"></div>
   </div>
-  <div class="scan-hint" id="scanHint">Aponta a câmara para uma maquete</div>
+  <div class="scan-hint" id="scanHint">Aponta a câmara para a maquete da Terra</div>
   <div class="confidence-wrap" id="confWrap">
     <span class="conf-label">Confiança</span>
     <div class="conf-track"><div class="conf-fill" id="confFill"></div></div>
@@ -290,7 +290,7 @@ html, body {
 <div class="start-screen" id="startScreen">
   <div class="start-planet"></div>
   <div class="start-title">Planet<span>AR</span></div>
-  <div class="start-desc">Aponta a câmara do telemóvel para uma maquete e descobre tudo sobre ela.</div>
+  <div class="start-desc">Aponta a câmara do telemóvel para a maquete da Terra e descobre tudo sobre ela.</div>
   <button class="start-btn" id="startBtn">Iniciar Câmara</button>
   <div class="start-note">Será pedido acesso à câmara</div>
 </div>
@@ -337,57 +337,79 @@ html, body {
     }
   });
 
+  // Buffers reutilizados (criados uma só vez)
+  const W = 80, H = 60;
+  const RX = (W * 0.25) | 0;
+  const RY = (H * 0.20) | 0;
+  const RW = (W * 0.50) | 0;
+  const RH = (H * 0.60) | 0;
+  const earthCoordsX = new Int16Array(RW * RH);
+  const earthCoordsY = new Int16Array(RW * RH);
+
+  let detectCanvas = null;
+  let detectCtx = null;
+  let lastFrameTime = 0;
+  const FRAME_INTERVAL = 50; // ~20fps em vez de 60fps
+  let pageVisible = true;
+  let lastPct = -1;
+
+  document.addEventListener('visibilitychange', () => {
+    pageVisible = !document.hidden;
+  });
+
   function detect() {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    const W = 80, H = 60;
-    c.width = W; c.height = H;
+    detectCanvas = document.createElement('canvas');
+    detectCanvas.width = W;
+    detectCanvas.height = H;
+    detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
 
-    const RX = (W * 0.25) | 0;
-    const RY = (H * 0.20) | 0;
-    const RW = (W * 0.50) | 0;
-    const RH = (H * 0.60) | 0;
+    function loop(now) {
+      requestAnimationFrame(loop);
 
-    function loop() {
+      // Pausa quando a página não está visível
+      if (!pageVisible) return;
+      // Throttle a ~20fps
+      if (now - lastFrameTime < FRAME_INTERVAL) return;
+      lastFrameTime = now;
+
       try {
-        ctx.drawImage(video, 0, 0, W, H);
-        const full = ctx.getImageData(RX, RY, RW, RH).data;
+        if (video.readyState < 2) return;
 
-        const earthMap = new Uint8Array(RW * RH);
+        detectCtx.drawImage(video, 0, 0, W, H);
+        const full = detectCtx.getImageData(RX, RY, RW, RH).data;
+
         let earthCount = 0;
-        let blueCount = 0, greenCount = 0, brownCount = 0, darkCount = 0;
+        let blueCount = 0, greenCount = 0, brownCount = 0;
 
-        for (let y = 0; y < RH; y++) {
-          for (let x = 0; x < RW; x++) {
-            const i = (y * RW + x) * 4;
-            const r = full[i], g = full[i+1], b = full[i+2];
+        // Single pass: classifica e guarda coordenadas
+        const len = full.length;
+        for (let p = 0, idx = 0; p < len; p += 4, idx++) {
+          const r = full[p], g = full[p+1], b = full[p+2];
 
-            const maxC = Math.max(r, g, b);
-            const minC = Math.min(r, g, b);
-            const range = maxC - minC;
-            const sat = maxC === 0 ? 0 : range / maxC;
-            const lum = (r + g + b) / 3;
+          const maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+          const minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+          const range = maxC - minC;
+          const sat = maxC === 0 ? 0 : range / maxC;
+          const lum = (r + g + b) * 0.3333;
 
-            if (b > 60 && b > r * 1.1 && b > g * 0.9 && sat > 0.2) {
-              blueCount++;
-              earthMap[y * RW + x] = 1;
-              earthCount++;
-            }
-            else if (g > 50 && g > r && g > b * 0.7 && sat > 0.18 && lum < 180) {
-              greenCount++;
-              earthMap[y * RW + x] = 1;
-              earthCount++;
-            }
-            else if (r > 100 && g > 60 && g < r * 0.92 && b < g * 0.85 && sat > 0.30 && lum > 80 && lum < 180) {
-              brownCount++;
-              earthMap[y * RW + x] = 1;
-              earthCount++;
-            }
-            else if (r < 60 && g < 70 && b < 90 && b >= r && lum < 60) {
-              darkCount++;
-              earthMap[y * RW + x] = 1;
-              earthCount++;
-            }
+          let isEarth = false;
+          if (b > 60 && b > r * 1.1 && b > g * 0.9 && sat > 0.2) {
+            blueCount++; isEarth = true;
+          }
+          else if (g > 50 && g > r && g > b * 0.7 && sat > 0.18 && lum < 180) {
+            greenCount++; isEarth = true;
+          }
+          else if (r > 100 && g > 60 && g < r * 0.92 && b < g * 0.85 && sat > 0.30 && lum > 80 && lum < 180) {
+            brownCount++; isEarth = true;
+          }
+          else if (r < 60 && g < 70 && b < 90 && b >= r && lum < 60) {
+            isEarth = true;
+          }
+
+          if (isEarth) {
+            earthCoordsX[earthCount] = idx % RW;
+            earthCoordsY[earthCount] = (idx / RW) | 0;
+            earthCount++;
           }
         }
 
@@ -405,13 +427,11 @@ html, body {
         const notDominated = blueRatio < 0.88 && landRatio < 0.88;
 
         if (sizeOK && mixOK && notDominated) {
+          // Centro de massa — itera só os pixels Terra
           let sumX = 0, sumY = 0;
-          for (let y = 0; y < RH; y++) {
-            for (let x = 0; x < RW; x++) {
-              if (earthMap[y * RW + x]) {
-                sumX += x; sumY += y;
-              }
-            }
+          for (let i = 0; i < earthCount; i++) {
+            sumX += earthCoordsX[i];
+            sumY += earthCoordsY[i];
           }
           const cx = sumX / earthCount;
           const cy = sumY / earthCount;
@@ -420,13 +440,12 @@ html, body {
           const off = Math.hypot(cx - fcx, cy - fcy) / (RW / 2);
           const centerScore = Math.max(0, 1 - off);
 
+          // Compactness — só pixels Terra
           let sumR = 0;
-          for (let y = 0; y < RH; y++) {
-            for (let x = 0; x < RW; x++) {
-              if (earthMap[y * RW + x]) {
-                sumR += Math.hypot(x - cx, y - cy);
-              }
-            }
+          for (let i = 0; i < earthCount; i++) {
+            const dx = earthCoordsX[i] - cx;
+            const dy = earthCoordsY[i] - cy;
+            sumR += Math.sqrt(dx * dx + dy * dy);
           }
           const avgR = sumR / earthCount;
           const expectedR = Math.sqrt(earthCount / Math.PI);
@@ -446,24 +465,27 @@ html, body {
 
         smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
 
+        // Só atualiza DOM se o valor mudou (evita layout thrashing)
         const pct = Math.round(smoothConf * 100);
-        confFill.style.width = pct + '%';
-        confPct.textContent = pct + '%';
-        confFill.classList.toggle('high', smoothConf > DETECT_ON);
-        confWrap.classList.toggle('active', true);
+        if (pct !== lastPct) {
+          confFill.style.width = pct + '%';
+          confPct.textContent = pct + '%';
+          confFill.classList.toggle('high', smoothConf > DETECT_ON);
+          lastPct = pct;
+        }
 
-        const now = Date.now();
-        if (!isDetected && smoothConf >= DETECT_ON && (now - lastDetectTime > COOLDOWN)) {
+        const t = Date.now();
+        if (!isDetected && smoothConf >= DETECT_ON && (t - lastDetectTime > COOLDOWN)) {
           show();
-          lastDetectTime = now;
+          lastDetectTime = t;
         } else if (isDetected && smoothConf < DETECT_OFF) {
           hide();
         }
-      } catch (err) { console.error(err); }
-
-      requestAnimationFrame(loop);
+      } catch (err) {}
     }
-    loop();
+
+    confWrap.classList.add('active');
+    requestAnimationFrame(loop);
   }
 
   function show() {
