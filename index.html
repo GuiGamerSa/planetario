@@ -2,690 +2,537 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Planetas AR</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AstroAtividades</title>
+
+<!-- MindAR + Three.js (necessários para o image tracking) -->
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
+
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#020818;
-  --panel:rgba(2,12,36,0.96);
-  --accent:#00d4ff;
-  --green:#00ff88;
-  --yellow:#ffd600;
-  --muted:rgba(160,200,255,0.5);
-  --border:rgba(0,212,255,0.2);
-  --text:#e8f4ff;
-}
-html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Exo 2',sans-serif;color:var(--text);user-select:none;-webkit-user-select:none}
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
-/* VIDEO */
-#video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
-#canvas-work{display:none}
-
-/* TOP BAR */
-#topbar{
-  position:fixed;top:0;left:0;right:0;z-index:8;
-  display:flex;align-items:center;padding:14px 16px;gap:12px;
-  background:linear-gradient(to bottom,rgba(2,8,24,0.9) 0%,transparent 100%);
-  pointer-events:none;
-}
-#app-name{font-family:'Orbitron',monospace;font-size:.68rem;letter-spacing:.28em;color:var(--muted)}
-#status-badge{
-  margin-left:auto;
-  font-family:'Orbitron',monospace;font-size:.55rem;letter-spacing:.14em;
-  padding:4px 10px;border-radius:2px;border:1px solid var(--border);
-  color:var(--accent);white-space:nowrap;
-  transition:color .25s,border-color .25s,background .25s;
-}
-#status-badge.lock{color:var(--yellow);border-color:rgba(255,214,0,.45);background:rgba(255,214,0,.06);animation:badgePulse .7s ease-in-out infinite alternate}
-#status-badge.done{color:var(--green);border-color:rgba(0,255,136,.45);background:rgba(0,255,136,.06);animation:none}
-@keyframes badgePulse{from{opacity:.7}to{opacity:1}}
-
-/* RETICLE */
-#reticle{
-  position:fixed;z-index:5;pointer-events:none;
-  transform:translate(-50%,-50%);
-  transition:opacity .3s;
-}
-#reticle.hidden{opacity:0}
-.rc{position:absolute;width:22px;height:22px;border-color:var(--accent);border-style:solid;border-width:0;opacity:.75;transition:border-color .25s}
-.rc.tl{top:0;left:0;border-top-width:2px;border-left-width:2px}
-.rc.tr{top:0;right:0;border-top-width:2px;border-right-width:2px}
-.rc.bl{bottom:0;left:0;border-bottom-width:2px;border-left-width:2px}
-.rc.br{bottom:0;right:0;border-bottom-width:2px;border-right-width:2px}
-#reticle.lock .rc{border-color:var(--yellow)}
-#reticle.done .rc{border-color:var(--green)}
-
-/* Progress ring SVG around reticle */
-#ring-svg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);overflow:visible;pointer-events:none}
-#ring-track{fill:none;stroke:rgba(255,255,255,.06);stroke-width:2}
-#ring-fill{fill:none;stroke:var(--yellow);stroke-width:2;stroke-linecap:round;transition:stroke-dashoffset .15s linear}
-
-#ret-hint{
-  position:absolute;top:calc(100% + 14px);left:50%;transform:translateX(-50%);
-  white-space:nowrap;font-size:.62rem;letter-spacing:.1em;color:var(--muted);
-  animation:hintPulse 2.5s ease-in-out infinite;
-}
-@keyframes hintPulse{0%,100%{opacity:.4}50%{opacity:1}}
-
-/* SCREEN CORNERS */
-.sc{position:fixed;z-index:4;pointer-events:none;width:20px;height:20px;border-color:rgba(0,212,255,.35);border-style:solid;border-width:0}
-.sc.tl{top:10px;left:10px;border-top-width:1.5px;border-left-width:1.5px}
-.sc.tr{top:10px;right:10px;border-top-width:1.5px;border-right-width:1.5px}
-.sc.bl{bottom:10px;left:10px;border-bottom-width:1.5px;border-left-width:1.5px}
-.sc.br{bottom:10px;right:10px;border-bottom-width:1.5px;border-right-width:1.5px}
-
-/* ── AR OVERLAY ── */
-#ar-overlay{
-  position:fixed;inset:0;z-index:10;
-  display:flex;flex-direction:column;
-  background:rgba(2,8,24,.55);
-  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
-  opacity:0;pointer-events:none;
-  transition:opacity .3s ease;
-}
-#ar-overlay.active{opacity:1;pointer-events:auto}
-
-/* Back button — grande e claro */
-#btn-back{
-  position:absolute;top:0;left:0;right:0;
-  display:flex;align-items:center;gap:10px;
-  padding:16px 20px;
-  background:linear-gradient(to bottom,rgba(2,8,24,.95),transparent);
-  border:none;cursor:pointer;color:var(--text);
-  font-family:'Orbitron',monospace;font-size:.72rem;letter-spacing:.18em;
-  text-transform:uppercase;
-}
-#btn-back:active{opacity:.7}
-.back-icon{
-  width:34px;height:34px;border-radius:50%;
-  border:1.5px solid var(--border);
-  display:flex;align-items:center;justify-content:center;
-  font-size:1rem;color:var(--accent);flex-shrink:0;
-  background:rgba(0,212,255,.08);
-}
-.back-text{color:var(--muted);font-size:.62rem;letter-spacing:.18em}
-
-/* Planet dot indicator (top, under back btn) */
-#ar-planet-header{
-  position:absolute;top:70px;left:0;right:0;
-  display:flex;align-items:center;gap:14px;
-  padding:0 20px;
-  pointer-events:none;
-}
-#ar-globe{width:52px;height:52px;border-radius:50%;flex-shrink:0;box-shadow:inset -5px -5px 12px rgba(0,0,0,.6)}
-#ar-pname{font-family:'Orbitron',monospace;font-size:1.4rem;font-weight:900;letter-spacing:.05em}
-#ar-ptype{font-size:.62rem;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-top:3px}
-#ar-detected{
-  margin-left:auto;
-  font-size:.52rem;letter-spacing:.14em;
-  color:var(--green);border:1px solid rgba(0,255,136,.3);
-  padding:3px 8px;border-radius:2px;white-space:nowrap;
-  animation:badgePulse .9s ease-in-out infinite alternate;
+:root {
+  --bg: #06060c;
+  --card-bg: rgba(10, 14, 28, 0.92);
+  --card-border: rgba(78, 168, 255, 0.12);
+  --accent: #4ea8ff;
+  --accent-glow: rgba(78, 168, 255, 0.3);
+  --green: #34d399;
+  --green-glow: rgba(52, 211, 153, 0.25);
+  --cyan: #00e5c8;
+  --text: #eef1f8;
+  --text-sec: rgba(238, 241, 248, 0.55);
+  --text-dim: rgba(238, 241, 248, 0.3);
+  --radius: 20px;
 }
 
-/* Info card — slides up from bottom */
-#ar-card{
-  position:absolute;bottom:0;left:0;right:0;
-  background:var(--panel);
-  border-top:1px solid var(--border);
-  border-radius:12px 12px 0 0;
-  transform:translateY(100%);
-  transition:transform .4s cubic-bezier(.34,1.28,.64,1);
-  overflow:hidden;
-}
-#ar-overlay.active #ar-card{transform:translateY(0)}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-.card-pill{
-  width:36px;height:4px;border-radius:2px;
-  background:rgba(255,255,255,.15);
-  margin:10px auto 0;
-}
-.card-accent-bar{height:2px;background:linear-gradient(90deg,var(--accent),#7b6cff);margin:10px 0 0}
-.card-desc-text{
-  padding:14px 18px 10px;
-  font-size:.8rem;line-height:1.8;
-  color:rgba(200,225,255,.84);
-  border-bottom:1px solid var(--border);
-}
-.card-stats-grid{
-  display:grid;grid-template-columns:1fr 1fr;
-  gap:1px;background:rgba(0,212,255,.07);
-}
-.stat-cell{background:var(--panel);padding:10px 16px}
-.stat-lbl{font-size:.5rem;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-bottom:3px}
-.stat-val{font-family:'Orbitron',monospace;font-size:.88rem;font-weight:700;color:var(--accent)}
-.stat-u{font-size:.55rem;color:var(--muted);margin-left:2px;font-family:'Exo 2',sans-serif}
-
-/* ── DEBUG ── */
-#debug-box{
-  position:fixed;bottom:14px;left:12px;z-index:12;
-  background:rgba(0,0,0,.8);border:1px solid #0f04;border-radius:3px;
-  padding:8px 12px;font-family:monospace;font-size:11px;color:#0f0;
-  line-height:1.75;display:none;pointer-events:none;
-}
-#debug-box.on{display:block}
-#btn-debug{
-  position:fixed;bottom:14px;right:14px;z-index:12;
-  font-size:.5rem;font-family:'Orbitron',monospace;letter-spacing:.1em;
-  padding:5px 10px;border:1px solid var(--border);background:rgba(0,0,0,.7);
-  color:var(--muted);border-radius:2px;cursor:pointer;
+html, body {
+  width: 100%; height: 100dvh; overflow: hidden;
+  background: var(--bg);
+  font-family: 'Outfit', system-ui, sans-serif;
+  color: var(--text);
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* ── SPLASH ── */
-#splash{
-  position:fixed;inset:0;z-index:20;background:var(--bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  transition:opacity .5s;
+/* MindAR injeta o seu próprio video/canvas dentro deste container */
+#ar-container {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
 }
-#splash.out{opacity:0;pointer-events:none}
-.sp-spinner{width:56px;height:56px;border:2px solid rgba(0,212,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:1.6rem}
-@keyframes spin{to{transform:rotate(360deg)}}
-.sp-title{font-family:'Orbitron',monospace;font-size:clamp(1.5rem,6vw,2.2rem);font-weight:900;letter-spacing:.2em;background:linear-gradient(135deg,#fff 30%,var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.4rem}
-.sp-sub{font-size:.62rem;letter-spacing:.3em;color:var(--muted);text-transform:uppercase;margin-bottom:.7rem}
-.sp-hint{font-size:.7rem;color:rgba(150,200,255,.65);text-align:center;max-width:240px;line-height:1.85;margin-bottom:2rem}
-.sp-hint b{color:var(--accent);font-weight:600}
-#btn-cam{
-  font-family:'Orbitron',monospace;font-size:.8rem;font-weight:700;letter-spacing:.2em;
-  padding:.9rem 2.6rem;border:1.5px solid var(--accent);background:rgba(0,212,255,.07);
-  color:var(--accent);cursor:pointer;border-radius:2px;
-  position:relative;overflow:hidden;transition:color .3s;text-transform:uppercase;
+#ar-container video, #ar-container canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
 }
-#btn-cam::before{content:'';position:absolute;inset:0;background:var(--accent);transform:translateX(-101%);transition:transform .3s;z-index:-1}
-#btn-cam:hover{color:var(--bg)}
-#btn-cam:hover::before{transform:translateX(0)}
-#cam-err{margin-top:1rem;font-size:.65rem;color:#ff6b6b;display:none;text-align:center;max-width:280px;line-height:1.7}
+
+.scan-ui {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  pointer-events: none;
+}
+
+.top-bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  padding: max(env(safe-area-inset-top, 16px), 16px) 20px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(to bottom, rgba(6,6,12,0.85) 0%, transparent 100%);
+}
+.logo { font-weight: 700; font-size: 18px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+.logo-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow), 0 0 20px var(--accent-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.8); } }
+
+.status-chip {
+  font-family: 'Space Mono', monospace; font-size: 11px; padding: 5px 12px;
+  border-radius: 100px; background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08); color: var(--text-sec);
+  letter-spacing: 0.04em; transition: all 0.4s;
+}
+.status-chip.detected { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25); color: var(--green); }
+
+.reticle { position: relative; width: 200px; height: 200px; transition: all 0.5s cubic-bezier(0.16,1,0.3,1); }
+.reticle.detected { transform: scale(1.08); }
+.reticle-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(78,168,255,0.25); transition: all 0.5s ease; }
+.reticle.detected .reticle-ring { border-color: var(--green); box-shadow: 0 0 30px var(--green-glow), inset 0 0 30px var(--green-glow); }
+.reticle-ring::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 1px dashed rgba(78,168,255,0.15); animation: spin 12s linear infinite; }
+.reticle.detected .reticle-ring::after { border-color: rgba(52,211,153,0.2); animation-duration: 6s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.corner-mark { position: absolute; width: 24px; height: 24px; border-color: var(--accent); border-style: solid; border-width: 0; transition: border-color 0.4s; }
+.reticle.detected .corner-mark { border-color: var(--green); }
+.corner-mark.tl { top: -16px; left: -16px; border-top-width: 2px; border-left-width: 2px; border-radius: 4px 0 0 0; }
+.corner-mark.tr { top: -16px; right: -16px; border-top-width: 2px; border-right-width: 2px; border-radius: 0 4px 0 0; }
+.corner-mark.bl { bottom: -16px; left: -16px; border-bottom-width: 2px; border-left-width: 2px; border-radius: 0 0 0 4px; }
+.corner-mark.br { bottom: -16px; right: -16px; border-bottom-width: 2px; border-right-width: 2px; border-radius: 0 0 4px 0; }
+
+.scan-hint { margin-top: 32px; font-size: 14px; color: var(--text-sec); letter-spacing: 0.03em; text-align: center; transition: opacity 0.4s; }
+.scan-hint.hidden { opacity: 0; }
+
+.scan-bar {
+  position: absolute; bottom: max(env(safe-area-inset-bottom, 24px), 24px);
+  left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: 100px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  font-size: 13px; color: var(--text-sec); transition: all 0.4s; white-space: nowrap;
+}
+.scan-bar-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.5s ease-in-out infinite; }
+.scan-bar.detected .scan-bar-dot { background: var(--green); animation: none; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+.info-panel {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  transform: translateY(100%); transition: transform 0.6s cubic-bezier(0.16,1,0.3,1);
+  pointer-events: auto;
+}
+.info-panel.visible { transform: translateY(0); }
+
+.info-card {
+  margin: 0 12px max(env(safe-area-inset-bottom, 12px), 12px);
+  padding: 24px 22px 22px; background: var(--card-bg);
+  border: 1px solid var(--card-border); border-radius: var(--radius);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain;
+  position: relative;
+}
+.info-card::-webkit-scrollbar { display: none; }
+
+.drag-handle { width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); margin: 0 auto 20px; }
+.planet-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.planet-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  box-shadow: 0 0 20px var(--accent-glow), inset 0 -4px 8px rgba(0,0,0,0.3);
+  flex-shrink: 0; position: relative; overflow: hidden;
+  transition: background 0.4s;
+}
+.planet-icon::after { content: ''; position: absolute; top: 6px; left: 8px; width: 18px; height: 12px; background: rgba(255,255,255,0.15); border-radius: 50%; transform: rotate(-20deg); }
+.planet-name { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.planet-subtitle { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--accent); margin-top: 4px; letter-spacing: 0.06em; text-transform: uppercase; }
+.planet-desc { font-size: 14px; line-height: 1.65; color: var(--text-sec); margin-bottom: 22px; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.stat-card { padding: 14px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 14px; }
+.stat-label { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.stat-value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+.stat-unit { font-size: 12px; font-weight: 400; color: var(--text-sec); margin-left: 2px; }
+
+.facts { padding: 16px; background: linear-gradient(135deg, rgba(78,168,255,0.06) 0%, rgba(0,229,200,0.04) 100%); border: 1px solid rgba(78,168,255,0.08); border-radius: 14px; }
+.facts-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.facts-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.facts-list li { font-size: 13px; line-height: 1.5; color: var(--text-sec); padding-left: 16px; position: relative; }
+.facts-list li::before { content: '→'; position: absolute; left: 0; color: var(--accent); }
+
+.start-screen {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center; padding: 40px 32px;
+  transition: opacity 0.5s, visibility 0.5s;
+}
+.start-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.start-planet {
+  width: 120px; height: 120px; border-radius: 50%;
+  background: linear-gradient(135deg, #1a6baa 0%, #2d8f4e 35%, #1a6baa 65%, #d4a843 100%);
+  box-shadow: 0 0 60px var(--accent-glow), 0 0 120px rgba(78,168,255,0.1);
+  margin-bottom: 40px; position: relative; animation: float 4s ease-in-out infinite;
+}
+.start-planet::after { content: ''; position: absolute; top: 16px; left: 22px; width: 36px; height: 22px; background: rgba(255,255,255,0.1); border-radius: 50%; transform: rotate(-15deg); }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+.start-title { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
+.start-title span { background: linear-gradient(135deg, var(--accent), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.start-desc { font-size: 15px; color: var(--text-sec); line-height: 1.6; max-width: 280px; margin-bottom: 48px; }
+.start-btn {
+  appearance: none; border: none; background: var(--accent); color: #fff;
+  font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600;
+  padding: 16px 48px; border-radius: 100px; cursor: pointer;
+  box-shadow: 0 4px 24px var(--accent-glow); transition: transform 0.2s;
+}
+.start-btn:active { transform: scale(0.96); }
+.start-note { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
+
+.error-screen {
+  position: fixed; inset: 0; z-index: 200; background: var(--bg);
+  display: none; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center; padding: 40px 32px;
+}
+.error-screen.visible { display: flex; }
+.error-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,80,80,0.1); display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 24px; }
+.error-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.error-desc { font-size: 14px; color: var(--text-sec); line-height: 1.6; max-width: 280px; }
+
+.close-btn {
+  position: absolute; top: 16px; right: 16px;
+  background: rgba(255,255,255,0.08); border: none; color: white;
+  font-size: 18px; width: 36px; height: 36px; border-radius: 50%;
+  cursor: pointer; z-index: 5;
+}
+
+@keyframes card-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.info-panel.visible .stat-card { animation: card-in 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+.info-panel.visible .stat-card:nth-child(1) { animation-delay: 0.1s; }
+.info-panel.visible .stat-card:nth-child(2) { animation-delay: 0.15s; }
+.info-panel.visible .stat-card:nth-child(3) { animation-delay: 0.2s; }
+.info-panel.visible .stat-card:nth-child(4) { animation-delay: 0.25s; }
+.info-panel.visible .facts { animation: card-in 0.4s 0.3s cubic-bezier(0.16,1,0.3,1) both; }
 </style>
 </head>
 <body>
 
-<video id="video" autoplay playsinline muted></video>
-<canvas id="canvas-work"></canvas>
+<div id="ar-container"></div>
 
-<!-- Screen corners -->
-<div class="sc tl"></div><div class="sc tr"></div>
-<div class="sc bl"></div><div class="sc br"></div>
-
-<!-- Top bar -->
-<div id="topbar">
-  <span id="app-name">COSMOS AR</span>
-  <div id="status-badge">● A PROCURAR</div>
+<div class="scan-ui">
+  <div class="top-bar">
+    <div class="logo"><div class="logo-dot"></div>AstroAtividades</div>
+    <div class="status-chip" id="statusChip">A PROCURAR</div>
+  </div>
+  <div class="reticle" id="reticle">
+    <div class="reticle-ring"></div>
+    <div class="corner-mark tl"></div>
+    <div class="corner-mark tr"></div>
+    <div class="corner-mark bl"></div>
+    <div class="corner-mark br"></div>
+  </div>
+  <div class="scan-hint" id="scanHint">Aponta a câmara para uma maquete</div>
+  <div class="scan-bar" id="scanBar">
+    <div class="scan-bar-dot"></div>
+    <span id="scanBarText">A analisar imagem...</span>
+  </div>
 </div>
 
-<!-- Reticle -->
-<div id="reticle">
-  <svg id="ring-svg"><circle id="ring-track"/><circle id="ring-fill"/></svg>
-  <div class="rc tl"></div><div class="rc tr"></div>
-  <div class="rc bl"></div><div class="rc br"></div>
-  <div id="ret-hint">Centra o planeta aqui</div>
-</div>
-
-<!-- AR Overlay -->
-<div id="ar-overlay">
-  <button id="btn-back" onclick="closeAR()">
-    <div class="back-icon">←</div>
-    <span class="back-text">VOLTAR A PROCURAR</span>
-  </button>
-
-  <div id="ar-planet-header">
-    <div id="ar-globe"></div>
-    <div>
-      <div id="ar-pname">—</div>
-      <div id="ar-ptype">—</div>
+<div class="info-panel" id="infoPanel">
+  <div class="info-card" id="infoCard">
+    <button id="closeBtn" class="close-btn">✕</button>
+    <div class="drag-handle"></div>
+    <div class="planet-header">
+      <div class="planet-icon" id="planetIcon"></div>
+      <div>
+        <div class="planet-name" id="planetName">—</div>
+        <div class="planet-subtitle" id="planetSubtitle">—</div>
+      </div>
     </div>
-    <div id="ar-detected">● DETETADO</div>
-  </div>
-
-  <div id="ar-card">
-    <div class="card-pill"></div>
-    <div class="card-accent-bar"></div>
-    <div class="card-desc-text" id="card-desc">—</div>
-    <div class="card-stats-grid" id="card-stats"></div>
+    <div class="planet-desc" id="planetDesc">—</div>
+    <div class="stats-grid" id="statsGrid"></div>
+    <div class="facts">
+      <div class="facts-title">✦ Sabias que...</div>
+      <ul class="facts-list" id="factsList"></ul>
+    </div>
   </div>
 </div>
 
-<!-- Debug -->
-<div id="debug-box"></div>
-<button id="btn-debug" onclick="toggleDebug()">DEBUG</button>
+<div class="start-screen" id="startScreen">
+  <div class="start-planet"></div>
+  <div class="start-title">Astro<span>Atividades</span></div>
+  <div class="start-desc">Aponta a câmara do telemóvel para uma maquete e descobre tudo sobre ela.</div>
+  <button class="start-btn" id="startBtn">Iniciar Câmara</button>
+  <div class="start-note">Será pedido acesso à câmara</div>
+</div>
 
-<!-- Splash -->
-<div id="splash">
-  <div class="sp-spinner"></div>
-  <div class="sp-title">COSMOS AR</div>
-  <div class="sp-sub">Deteção de Planetas</div>
-  <div class="sp-hint">Aponta a câmera para o planeta<br>e <b>centra-o no círculo</b><br>A deteção é automática</div>
-  <button id="btn-cam" onclick="startCamera()">◎ &nbsp;ABRIR CÂMERA</button>
-  <div id="cam-err"></div>
+<div class="error-screen" id="errorScreen">
+  <div class="error-icon">📷</div>
+  <div class="error-title">Não foi possível iniciar</div>
+  <div class="error-desc" id="errorDesc">Permite o acesso à câmara nas definições do browser.</div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════
-//  DADOS — edita aqui os textos e cores
-// ═══════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// DADOS DOS PLANETAS — ordem TEM de ser igual à do targets.mind
+// 0=Mercúrio, 1=Vénus, 2=Terra, 3=Marte, 4=Júpiter, 5=Saturno, 6=Urano, 7=Netúno
+// ════════════════════════════════════════════════════════════
 const PLANETS = [
   {
-    id: 'terra',
-    name: 'Terra',
-    type: 'Planeta Rochoso · 3.º do Sol',
-    gradient: 'radial-gradient(circle at 35% 35%, #7ac8f0, #1a6eb5 40%, #0a3060)',
-    glow: '#4a9eff',
-
-    // ── Texto que aparece no overlay ──
-    descricao: 'O nosso lar e único planeta conhecido com vida. 71% da superfície é coberta por oceanos. A atmosfera de azoto e oxigénio protege todos os seres vivos das radiações solares.',
-
-    // ── Estatísticas ──
+    name: 'Mercúrio',
+    subtitle: '1º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #8c7853 0%, #a89070 50%, #5c4a32 100%)',
+    desc: 'O planeta mais próximo do Sol e o menor do Sistema Solar. A sua superfície coberta de crateras lembra a da Lua. Tem variações extremas de temperatura entre o dia e a noite.',
     stats: [
-      { label: 'Diâmetro',  value: '12.742', unit: 'km'   },
-      { label: 'Dist. Sol', value: '149,6M', unit: 'km'   },
-      { label: 'Ano',       value: '365',    unit: 'dias' },
-      { label: 'Satélites', value: '1',      unit: 'lua'  },
+      { label: 'Diâmetro', value: '4 879', unit: 'km' },
+      { label: 'Massa', value: '3.30×10²³', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '57.9', unit: 'M km' },
+      { label: 'Temp. Média', value: '167', unit: '°C' }
     ],
-
-    // ── Critérios de deteção (usa DEBUG para ver os valores reais) ──
-    // scores.blue, .green, .red, .brown, .roundness (0-1 cada)
-    detect(s) {
-      // Terra: azul + verde (continentes) + forma esferica uniforme em 360 graus
-      // Ecra azul: falha em activeSectors (bordas concentradas) e green muito baixo
-      return s.blue         > 0.18   // oceanos
-          && s.green        > 0.04   // continentes (filtra ecras lisos)
-          && s.blue         > s.red * 1.6
-          && s.roundness    > 0.50   // forma esferica uniforme
-          && s.activeSectors >= 6    // bordas em pelo menos 6 dos 12 sectores
-          && s.variance     < 0.020  // bordas distribuidas (nao concentradas como ecra)
-          && s.total        > 150;
-    },
+    facts: [
+      'Um ano em Mercúrio dura apenas 88 dias terrestres',
+      'A temperatura varia entre -173°C de noite e 427°C de dia',
+      'É o planeta com maior variação de temperatura do Sistema Solar',
+      'Não tem luas nem atmosfera significativa'
+    ]
   },
-
-  // Adiciona mais planetas aqui (descomenta e edita):
-  // {
-  //   id: 'marte',
-  //   name: 'Marte',
-  //   type: 'Planeta Rochoso · 4.º do Sol',
-  //   gradient: 'radial-gradient(circle at 35% 35%, #e87858, #c04020 50%, #601808)',
-  //   glow: '#d4512a',
-  //   descricao: 'O Planeta Vermelho. Tem o maior vulcão do Sistema Solar...',
-  //   stats: [{ label: 'Diâmetro', value: '6.779', unit: 'km' }],
-  //   detect(s) { return s.red > 0.28 && s.red > s.blue * 1.8 && s.roundness > 0.4; },
-  // },
+  {
+    name: 'Vénus',
+    subtitle: '2º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #e8b87e 0%, #f5dba8 40%, #c89860 100%)',
+    desc: 'Conhecido como o gémeo da Terra pelo tamanho semelhante, mas é o planeta mais quente do Sistema Solar devido ao seu intenso efeito de estufa. Tem uma atmosfera densa de dióxido de carbono.',
+    stats: [
+      { label: 'Diâmetro', value: '12 104', unit: 'km' },
+      { label: 'Massa', value: '4.87×10²⁴', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '108.2', unit: 'M km' },
+      { label: 'Temp. Média', value: '464', unit: '°C' }
+    ],
+    facts: [
+      'Roda ao contrário dos outros planetas — o Sol nasce a oeste',
+      'Um dia em Vénus é mais longo que um ano (243 vs 225 dias)',
+      'A pressão atmosférica é 92x a da Terra',
+      'É o objeto mais brilhante no céu noturno depois da Lua'
+    ]
+  },
+  {
+    name: 'Terra',
+    subtitle: '3º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #1a6baa 0%, #2d8f4e 40%, #1a6baa 70%, #d4a843 100%)',
+    desc: 'O único planeta conhecido com vida. A Terra tem oceanos de água líquida, uma atmosfera rica em azoto e oxigénio, e um campo magnético que a protege do vento solar.',
+    stats: [
+      { label: 'Diâmetro', value: '12 742', unit: 'km' },
+      { label: 'Massa', value: '5.97×10²⁴', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '149.6', unit: 'M km' },
+      { label: 'Temp. Média', value: '15', unit: '°C' }
+    ],
+    facts: [
+      'Um dia na Terra nem sempre durou 24h — há 1.4 mil milhões de anos durava apenas 18h',
+      '70.8% da superfície é coberta por água, mas apenas 3% é água doce',
+      'O ponto mais profundo do oceano (Fossa das Marianas) tem 10 994 metros',
+      'A Terra viaja pelo espaço a cerca de 107 000 km/h em torno do Sol'
+    ]
+  },
+  {
+    name: 'Marte',
+    subtitle: '4º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #c1440e 0%, #e07b3c 50%, #8b2500 100%)',
+    desc: 'Conhecido como o Planeta Vermelho devido ao óxido de ferro na sua superfície. Tem as maiores montanhas e os cânions mais profundos do Sistema Solar, e indícios de água no passado.',
+    stats: [
+      { label: 'Diâmetro', value: '6 779', unit: 'km' },
+      { label: 'Massa', value: '6.42×10²³', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '227.9', unit: 'M km' },
+      { label: 'Temp. Média', value: '-65', unit: '°C' }
+    ],
+    facts: [
+      'O monte Olympus é o maior vulcão do Sistema Solar (22 km de altura)',
+      'Tem duas pequenas luas: Fobos e Deimos',
+      'Um dia marciano dura 24h 37min — quase igual ao terrestre',
+      'Já hospeda vários rovers da NASA, como o Perseverance e o Curiosity'
+    ]
+  },
+  {
+    name: 'Júpiter',
+    subtitle: '5º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #c8a47e 0%, #e8d4a8 30%, #a07852 60%, #d4b890 100%)',
+    desc: 'O maior planeta do Sistema Solar, um gigante gasoso composto principalmente de hidrogénio e hélio. A sua famosa Grande Mancha Vermelha é uma tempestade que dura há séculos.',
+    stats: [
+      { label: 'Diâmetro', value: '139 820', unit: 'km' },
+      { label: 'Massa', value: '1.90×10²⁷', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '778.5', unit: 'M km' },
+      { label: 'Temp. Média', value: '-110', unit: '°C' }
+    ],
+    facts: [
+      'Tem mais de 95 luas conhecidas — as maiores são Io, Europa, Ganimedes e Calisto',
+      'A Grande Mancha Vermelha é uma tempestade maior que a Terra',
+      'Um dia em Júpiter dura apenas 9h 56min — gira muito depressa',
+      'Se fosse oco, caberia mais de 1300 Terras lá dentro'
+    ]
+  },
+  {
+    name: 'Saturno',
+    subtitle: '6º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #e8c478 0%, #f5dca8 40%, #c89e58 100%)',
+    desc: 'Famoso pelos seus impressionantes anéis feitos de gelo e rocha. É o segundo maior planeta e tem uma densidade tão baixa que flutuaria em água, se houvesse um oceano grande o suficiente.',
+    stats: [
+      { label: 'Diâmetro', value: '116 460', unit: 'km' },
+      { label: 'Massa', value: '5.68×10²⁶', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '1.43', unit: 'B km' },
+      { label: 'Temp. Média', value: '-140', unit: '°C' }
+    ],
+    facts: [
+      'Os anéis estendem-se por 282 000 km mas têm menos de 1 km de espessura',
+      'Tem 146 luas conhecidas — Titã é maior que Mercúrio',
+      'É o planeta menos denso — flutuaria em água',
+      'Um ano em Saturno dura 29.5 anos terrestres'
+    ]
+  },
+  {
+    name: 'Urano',
+    subtitle: '7º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #4fd0e0 0%, #87e0ed 50%, #2a9aa8 100%)',
+    desc: 'Um gigante de gelo com uma característica única: roda de lado, com o eixo quase paralelo ao plano da sua órbita. A sua cor azul-esverdeada vem do metano na atmosfera.',
+    stats: [
+      { label: 'Diâmetro', value: '50 724', unit: 'km' },
+      { label: 'Massa', value: '8.68×10²⁵', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '2.87', unit: 'B km' },
+      { label: 'Temp. Média', value: '-195', unit: '°C' }
+    ],
+    facts: [
+      'Roda inclinado 98° — praticamente "deitado" na sua órbita',
+      'Cada estação dura cerca de 21 anos terrestres',
+      'Foi o primeiro planeta descoberto com telescópio (1781)',
+      'Também tem anéis, mas muito mais ténues que os de Saturno'
+    ]
+  },
+  {
+    name: 'Netúno',
+    subtitle: '8º Planeta · Sistema Solar',
+    gradient: 'linear-gradient(135deg, #2a4fb8 0%, #4a78e0 50%, #1a3080 100%)',
+    desc: 'O planeta mais distante do Sol, um gigante de gelo com a coloração azul intensa devido ao metano. Tem os ventos mais fortes do Sistema Solar, atingindo os 2 100 km/h.',
+    stats: [
+      { label: 'Diâmetro', value: '49 244', unit: 'km' },
+      { label: 'Massa', value: '1.02×10²⁶', unit: 'kg' },
+      { label: 'Dist. ao Sol', value: '4.50', unit: 'B km' },
+      { label: 'Temp. Média', value: '-200', unit: '°C' }
+    ],
+    facts: [
+      'Os ventos chegam aos 2 100 km/h — os mais fortes do Sistema Solar',
+      'Um ano em Netúno dura 165 anos terrestres',
+      'Foi previsto matematicamente antes de ser observado (1846)',
+      'A sua maior lua, Tritão, orbita ao contrário do planeta'
+    ]
+  }
 ];
 
-// ═══════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════
-const CFG = {
-  holdFrames:  5,     // frames para confirmar (5 = mais seguro contra falsos positivos)
-  zoneRatio:   0.50,  // tamanho do círculo de deteção vs largura do ecrã
-  workSize:    160,   // canvas de trabalho (menor = mais rápido)
-  edgeThresh:  20,    // sensibilidade de borda Sobel
-  scanMs:      120,   // intervalo de análise em ms
-};
+// ════════════════════════════════════════════════════════════
+// CÓDIGO DA APLICAÇÃO
+// ════════════════════════════════════════════════════════════
+(() => {
+  const $ = id => document.getElementById(id);
+  const reticle = $('reticle');
+  const statusChip = $('statusChip');
+  const scanHint = $('scanHint');
+  const scanBar = $('scanBar');
+  const scanBarText = $('scanBarText');
+  const infoPanel = $('infoPanel');
 
-// ═══════════════════════════════════════════
-//  ESTADO
-// ═══════════════════════════════════════════
-const video  = document.getElementById('video');
-const cWork  = document.getElementById('canvas-work');
-const ctxW   = cWork.getContext('2d', { willReadFrequently: true });
+  let mindarThree = null;
+  let isStarted = false;
+  let currentPlanet = -1;
 
-let scanning     = false;
-let scanTimer    = null;
-let holdCount    = 0;
-let lastId       = null;
-let activePlanet = null;
-let debugOn      = false;
-let retPos       = { cx:0, cy:0, r:0 }; // posição do reticle no ecrã
+  // ── Preencher o card com dados do planeta detetado ──
+  function showPlanet(index) {
+    const p = PLANETS[index];
+    if (!p) return;
+    currentPlanet = index;
 
-// ── Pré-aloca buffers para evitar GC ──
-let grayBuf = null;
+    $('planetIcon').style.background = p.gradient;
+    $('planetName').textContent = p.name;
+    $('planetSubtitle').textContent = p.subtitle;
+    $('planetDesc').textContent = p.desc;
 
-// ═══════════════════════════════════════════
-//  CÂMERA
-// ═══════════════════════════════════════════
-async function startCamera() {
-  const errEl = document.getElementById('cam-err');
-  errEl.style.display = 'none';
-  const btn = document.getElementById('btn-cam');
-  btn.textContent = '● A ABRIR...';
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    });
-    video.srcObject = stream;
-    await video.play();
-    document.getElementById('splash').classList.add('out');
-    setupReticle();
-    window.addEventListener('resize', setupReticle);
-    startScanning();
-  } catch (e) {
-    btn.textContent = '◎  ABRIR CÂMERA';
-    errEl.style.display = 'block';
-    errEl.textContent =
-      e.name === 'NotAllowedError' ? 'Permissão de câmera negada. Abre as definições do browser e permite o acesso.' :
-      e.name === 'NotFoundError'   ? 'Câmera não encontrada neste dispositivo.' :
-                                     'Erro: ' + e.message + ' · Precisas de HTTPS ou localhost.';
-  }
-}
+    $('statsGrid').innerHTML = p.stats.map(s => `
+      <div class="stat-card">
+        <div class="stat-label">${s.label}</div>
+        <div class="stat-value">${s.value}<span class="stat-unit">${s.unit}</span></div>
+      </div>
+    `).join('');
 
-// ═══════════════════════════════════════════
-//  RETICLE
-// ═══════════════════════════════════════════
-function setupReticle() {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const r  = Math.round(Math.min(vw, vh) * CFG.zoneRatio / 2);
-  const cx = Math.round(vw / 2);
-  const cy = Math.round(vh * 0.42);
-  retPos = { cx, cy, r };
+    $('factsList').innerHTML = p.facts.map(f => `<li>${f}</li>`).join('');
 
-  const ret = document.getElementById('reticle');
-  const d   = r * 2;
-  ret.style.width  = d + 'px';
-  ret.style.height = d + 'px';
-  ret.style.left   = cx + 'px';
-  ret.style.top    = cy + 'px';
+    reticle.classList.add('detected');
+    statusChip.textContent = p.name.toUpperCase();
+    statusChip.classList.add('detected');
+    scanHint.classList.add('hidden');
+    scanBar.classList.add('detected');
+    scanBarText.textContent = `${p.name} identificado ✓`;
+    infoPanel.classList.add('visible');
 
-  // SVG ring
-  const svg   = document.getElementById('ring-svg');
-  const circ  = 2 * Math.PI * (r + 6);
-  svg.setAttribute('width',  d + 20);
-  svg.setAttribute('height', d + 20);
-  ['ring-track','ring-fill'].forEach(id => {
-    const el = document.getElementById(id);
-    el.setAttribute('cx', r + 10);
-    el.setAttribute('cy', r + 10);
-    el.setAttribute('r', r + 6);
-    el.style.strokeDasharray  = circ;
-    el.style.strokeDashoffset = circ;
-  });
-  document.getElementById('ring-fill').style.transform = 'rotate(-90deg)';
-  document.getElementById('ring-fill').style.transformOrigin = (r+10)+'px '+(r+10)+'px';
-  setProgress(0);
-}
-
-function setProgress(ratio) {
-  const fill  = document.getElementById('ring-fill');
-  const track = document.getElementById('ring-track');
-  const circ  = parseFloat(fill.style.strokeDasharray) || 1;
-  fill.style.strokeDashoffset  = circ * (1 - ratio);
-  track.style.strokeDashoffset = 0;
-}
-
-// ═══════════════════════════════════════════
-//  ANÁLISE — roda no main thread mas optimizado
-// ═══════════════════════════════════════════
-function startScanning() {
-  scanning  = true;
-  scanTimer = setInterval(tick, CFG.scanMs);
-}
-
-function stopScanning() {
-  scanning = false;
-  clearInterval(scanTimer);
-  scanTimer = null;
-}
-
-function tick() {
-  if (!scanning || activePlanet) return;
-  if (video.readyState < 2 || !video.videoWidth) return;
-
-  const scores = captureAndAnalyze();
-  if (!scores) return;
-
-  if (debugOn) renderDebug(scores);
-
-  // Tenta cada planeta
-  let matched = null;
-  for (const p of PLANETS) {
-    if (p.detect(scores)) { matched = p.id; break; }
+    if (navigator.vibrate) navigator.vibrate(50);
   }
 
-  if (matched && matched === lastId) {
-    holdCount++;
-    setRetState('lock');
-    setBadge('lock', PLANETS.find(p=>p.id===matched).name);
-    setProgress(holdCount / CFG.holdFrames);
-    if (holdCount >= CFG.holdFrames) {
-      stopScanning();
-      showPlanet(matched);
-    }
-  } else {
-    const changed = matched !== lastId;
-    holdCount = matched ? 1 : 0;
-    lastId    = matched;
-    if (changed) {
-      setRetState(matched ? 'lock' : 'idle');
-      setBadge(matched ? 'lock' : 'idle', matched ? PLANETS.find(p=>p.id===matched).name : '');
-      setProgress(matched ? 1/CFG.holdFrames : 0);
-    }
+  function hideCard() {
+    currentPlanet = -1;
+    reticle.classList.remove('detected');
+    statusChip.textContent = 'A PROCURAR';
+    statusChip.classList.remove('detected');
+    scanHint.classList.remove('hidden');
+    scanBar.classList.remove('detected');
+    scanBarText.textContent = 'A analisar imagem...';
+    infoPanel.classList.remove('visible');
   }
-}
 
-// ── Captura e analisa zona central ──────────
-function captureAndAnalyze() {
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const sw = window.innerWidth, sh = window.innerHeight;
+  // ── Iniciar MindAR ──
+  $('startBtn').addEventListener('click', async () => {
+    if (isStarted) return;
+    isStarted = true;
 
-  // Calcula crop do vídeo correspondente ao reticle (object-fit:cover)
-  const vidAR = vw/vh, scrAR = sw/sh;
-  let dw, dh, ox, oy;
-  if (vidAR > scrAR) { dh=sh; dw=sh*vidAR; ox=(dw-sw)/2; oy=0; }
-  else               { dw=sw; dh=sw/vidAR; ox=0; oy=(dh-sh)/2; }
-  const sx=dw/vw, sy=dh/vh;
-
-  const { cx, cy, r } = retPos;
-  const vcx = (cx+ox)/sx, vcy = (cy+oy)/sy, vr = r/sx;
-
-  const crop = Math.round(vr*2.2);
-  const x0   = Math.max(0, Math.round(vcx - crop/2));
-  const y0   = Math.max(0, Math.round(vcy - crop/2));
-  const cw   = Math.min(crop, vw-x0);
-  const ch   = Math.min(crop, vh-y0);
-  if (cw < 20 || ch < 20) return null;
-
-  const W = CFG.workSize, H = CFG.workSize;
-  cWork.width = W; cWork.height = H;
-  ctxW.drawImage(video, x0, y0, cw, ch, 0, 0, W, H);
-
-  // Usa ImageData directamente
-  const d = ctxW.getImageData(0, 0, W, H).data;
-  return analyzeZone(d, W, H);
-}
-
-function analyzeZone(data, W, H) {
-  const cx = W>>1, cy = H>>1;
-  const cr  = W * 0.42;
-  const cr2 = cr * cr;
-  const T   = CFG.edgeThresh;
-
-  if (!grayBuf || grayBuf.length !== W*H) grayBuf = new Uint8Array(W*H);
-  for (let i=0, p=0; i<W*H; i++, p+=4)
-    grayBuf[i] = (data[p]*77 + data[p+1]*150 + data[p+2]*29) >> 8;
-
-  let blue=0, green=0, red=0, brown=0, total=0;
-
-  // Distribucao angular de bordas — 12 sectores de 30 graus cada
-  // Esfera: bordas distribuidas uniformemente em todos os sectores
-  // Ecra / caixa: bordas concentradas em 2-4 sectores (horizontais/verticais)
-  const SECTORS = 12;
-  const sectorEdge = new Uint16Array(SECTORS);
-  const sectorTot  = new Uint16Array(SECTORS);
-
-  // Anel onde contamos bordas: entre 60% e 95% do raio
-  const ringInner2 = cr2 * 0.36; // 60%^2
-  const ringOuter2 = cr2 * 0.90; // 95%^2
-
-  for (let y=1; y<H-1; y++) {
-    for (let x=1; x<W-1; x++) {
-      const dx=x-cx, dy=y-cy, d2=dx*dx+dy*dy;
-      if (d2>cr2) continue;
-
-      const p = (y*W+x)<<2;
-      const r=data[p], g=data[p+1], b=data[p+2];
-      const lum = (r+g+b)*0.333|0;
-      if (lum<22||lum>238) continue;
-
-      total++;
-      if (b>r  && b>g  && b>50  && b-r>16)              blue++;
-      if (g>r  && g>b  && g>44  && g-b>10)              green++;
-      if (r>g  && r>b  && r>65  && r-b>22)              red++;
-      if (r>95 && r>b  && g>b   && r-b>22 && Math.abs(r-g)<55) brown++;
-
-      // Bordas no anel — divididas por sector angular
-      if (d2 >= ringInner2 && d2 <= ringOuter2) {
-        const angle = Math.atan2(dy, dx); // -PI a PI
-        const sector = Math.floor(((angle + Math.PI) / (2*Math.PI)) * SECTORS) % SECTORS;
-        sectorTot[sector]++;
-        const i  = y*W+x;
-        const gx = -grayBuf[i-W-1]+grayBuf[i-W+1]-2*grayBuf[i-1]+2*grayBuf[i+1]-grayBuf[i+W-1]+grayBuf[i+W+1];
-        const gy = -grayBuf[i-W-1]-2*grayBuf[i-W]-grayBuf[i-W+1]+grayBuf[i+W-1]+2*grayBuf[i+W]+grayBuf[i+W+1];
-        if ((Math.abs(gx)+Math.abs(gy)) > T) sectorEdge[sector]++;
+    try {
+      // Verifica se a biblioteca carregou
+      if (!window.MINDAR || !window.MINDAR.IMAGE) {
+        throw new Error('MindAR não carregou. Verifica a tua ligação à internet.');
       }
+
+      // Cria a instância MindAR Image
+      mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: $('ar-container'),
+        imageTargetSrc: './targets.mind',  // ← caminho para o ficheiro compilado
+        maxTrack: 1,                        // só rastreia 1 planeta de cada vez
+        uiLoading: 'no',
+        uiScanning: 'no',
+        uiError: 'no'
+      });
+
+      // Para cada planeta, criar um anchor e listeners
+      for (let i = 0; i < PLANETS.length; i++) {
+        const anchor = mindarThree.addAnchor(i);
+
+        anchor.onTargetFound = () => {
+          showPlanet(i);
+        };
+
+        anchor.onTargetLost = () => {
+          // Só esconde se for este o planeta atual
+          if (currentPlanet === i) hideCard();
+        };
+      }
+
+      await mindarThree.start();
+      $('startScreen').classList.add('hidden');
+
+    } catch (err) {
+      console.error('Erro ao iniciar:', err);
+      $('startScreen').classList.add('hidden');
+      $('errorDesc').textContent = err.message || 'Permite o acesso à câmara nas definições do browser.';
+      $('errorScreen').classList.add('visible');
+      isStarted = false;
     }
-  }
-
-  if (total < 80) return {blue:0,green:0,red:0,brown:0,roundness:0,edgeDensity:0,total};
-
-  // Calcula densidade de borda por sector
-  const densities = [];
-  let totalEdgePx = 0, totalRingPx = 0;
-  for (let s=0; s<SECTORS; s++) {
-    totalEdgePx += sectorEdge[s];
-    totalRingPx += sectorTot[s];
-    densities.push(sectorTot[s]>0 ? sectorEdge[s]/sectorTot[s] : 0);
-  }
-  const eD = totalRingPx>0 ? totalEdgePx/totalRingPx : 0;
-
-  // Uniformidade: conta quantos sectores com bordas suficientes (>2%)
-  // Esfera pintada: 7-12 sectores activos
-  // Ecra / fundo liso: 0-3 sectores activos (so nas bordas do ecra)
-  const activeSectors = densities.filter(d => d > 0.02).length;
-
-  // Variancia da densidade entre sectores — baixa = uniforme (esfera), alta = concentrado (ecra)
-  const meanD = densities.reduce((a,b)=>a+b,0) / SECTORS;
-  const variance = densities.reduce((a,d)=>a+(d-meanD)**2, 0) / SECTORS;
-
-  // roundness: muitos sectores activos + baixa variancia + densidade moderada
-  let roundness = 0;
-  if (activeSectors >= 6 && eD > 0.04 && eD < 0.72 && variance < 0.018) {
-    roundness = Math.min(1, (activeSectors / SECTORS) * (1 - variance * 20));
-  }
-
-  return {
-    blue:   blue/total,
-    green:  green/total,
-    red:    red/total,
-    brown:  brown/total,
-    roundness,
-    edgeDensity: eD,
-    activeSectors,
-    variance: Math.round(variance*1000)/1000,
-    total,
-  };
-}
-
-// ═══════════════════════════════════════════
-//  MOSTRAR PLANETA
-// ═══════════════════════════════════════════
-function showPlanet(id) {
-  const planet = PLANETS.find(p=>p.id===id);
-  activePlanet = id;
-
-  // Preenche o overlay
-  document.getElementById('ar-pname').textContent = planet.name;
-  document.getElementById('ar-ptype').textContent = planet.type;
-  document.getElementById('card-desc').textContent = planet.descricao;
-
-  const globe = document.getElementById('ar-globe');
-  globe.style.background = planet.gradient;
-  globe.style.boxShadow  = `inset -5px -5px 12px rgba(0,0,0,.6), 0 0 24px ${planet.glow}88`;
-
-  document.getElementById('card-stats').innerHTML = planet.stats.map(s =>
-    `<div class="stat-cell"><div class="stat-lbl">${s.label}</div><div class="stat-val">${s.value}<span class="stat-u">${s.unit}</span></div></div>`
-  ).join('');
-
-  // Para a camera (poupa CPU e bateria)
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.enabled = false);
-    video.pause();
-  }
-
-  // Esconde reticle
-  document.getElementById('reticle').classList.add('hidden');
-
-  // Activa overlay (transition CSS trata do fade + slide)
-  requestAnimationFrame(() => {
-    document.getElementById('ar-overlay').classList.add('active');
   });
 
-  setBadge('done', planet.name);
-  setRetState('done');
-}
+  $('closeBtn').addEventListener('click', hideCard);
 
-// ═══════════════════════════════════════════
-//  FECHAR OVERLAY
-// ═══════════════════════════════════════════
-function closeAR() {
-  document.getElementById('ar-overlay').classList.remove('active');
-
-  // Reativa camera e scanning apos transicao
-  setTimeout(() => {
-    // Reativa camera
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(t => t.enabled = true);
-      video.play();
+  // Pausa MindAR quando a página fica em background (poupa bateria)
+  document.addEventListener('visibilitychange', () => {
+    if (!mindarThree) return;
+    if (document.hidden) {
+      mindarThree.stop();
+    } else {
+      mindarThree.start();
     }
-    activePlanet = null;
-    holdCount    = 0;
-    lastId       = null;
-    setRetState('idle');
-    setBadge('idle');
-    setProgress(0);
-    document.getElementById('reticle').classList.remove('hidden');
-    document.getElementById('ret-hint').textContent = 'Centra o planeta aqui';
-    startScanning();
-  }, 320);
-}
-
-// ═══════════════════════════════════════════
-//  UI HELPERS
-// ═══════════════════════════════════════════
-function setRetState(state) {
-  document.getElementById('reticle').className = state === 'idle' ? '' : state;
-}
-
-function setBadge(state, name) {
-  const el = document.getElementById('status-badge');
-  if (state==='idle')   { el.textContent='● A PROCURAR'; el.className=''; }
-  if (state==='lock')   { el.textContent=`◉ ${(name||'').toUpperCase()}`; el.className='lock'; }
-  if (state==='done')   { el.textContent=`✓ ${(name||'').toUpperCase()}`; el.className='done'; }
-}
-
-// ═══════════════════════════════════════════
-//  DEBUG
-// ═══════════════════════════════════════════
-function toggleDebug() {
-  debugOn = !debugOn;
-  document.getElementById('debug-box').classList.toggle('on', debugOn);
-  document.getElementById('btn-debug').textContent = debugOn ? 'DEBUG ON' : 'DEBUG';
-}
-
-function renderDebug(s) {
-  document.getElementById('debug-box').innerHTML =
-    `blue:    ${(s.blue*100).toFixed(1)}%\n` +
-    `green:   ${(s.green*100).toFixed(1)}%\n` +
-    `red:     ${(s.red*100).toFixed(1)}%\n` +
-    `round:   ${(s.roundness*100).toFixed(1)}%\n` +
-    `sectors: ${s.activeSectors}/12\n` +
-    `variance:${s.variance}\n` +
-    `edges:   ${(s.edgeDensity*100).toFixed(1)}%\n` +
-    `px:      ${s.total}\n` +
-    `hold:    ${holdCount}/${CFG.holdFrames}`;
-}
-
-window.addEventListener('resize', () => {
-  if (activePlanet) showPlanet(activePlanet);
-});
+  });
+})();
 </script>
 </body>
 </html>
