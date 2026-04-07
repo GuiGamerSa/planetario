@@ -2,479 +2,128 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>PlanetAR — Terra</title>
+<title>PlanetAR Detector</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
-
-:root {
-  --bg: #06060c;
-  --card-bg: rgba(10, 14, 28, 0.92);
-  --card-border: rgba(78, 168, 255, 0.12);
-  --accent: #4ea8ff;
-  --accent-glow: rgba(78, 168, 255, 0.3);
-  --green: #34d399;
-  --green-glow: rgba(52, 211, 153, 0.25);
-  --cyan: #00e5c8;
-  --text: #eef1f8;
-  --text-sec: rgba(238, 241, 248, 0.55);
-  --text-dim: rgba(238, 241, 248, 0.3);
-  --radius: 20px;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-html, body {
-  width: 100%; height: 100dvh; overflow: hidden;
-  background: var(--bg);
-  font-family: 'Outfit', system-ui, sans-serif;
-  color: var(--text);
-  -webkit-user-select: none; user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-#camera {
-  position: fixed; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; z-index: 0;
-}
-
-.scan-ui {
-  position: fixed; inset: 0; z-index: 10;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  pointer-events: none;
-}
-
-.top-bar {
-  position: absolute; top: 0; left: 0; right: 0;
-  padding: max(env(safe-area-inset-top, 16px), 16px) 20px 12px;
-  display: flex; align-items: center; justify-content: space-between;
-  background: linear-gradient(to bottom, rgba(6,6,12,0.85) 0%, transparent 100%);
-}
-.logo { font-weight: 700; font-size: 18px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
-.logo-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow), 0 0 20px var(--accent-glow);
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.8); } }
-
-.status-chip {
-  font-family: 'Space Mono', monospace; font-size: 11px; padding: 5px 12px;
-  border-radius: 100px; background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08); color: var(--text-sec);
-  letter-spacing: 0.04em; transition: all 0.4s;
-}
-.status-chip.detected { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25); color: var(--green); }
-
-.reticle { position: relative; width: 200px; height: 200px; transition: all 0.5s cubic-bezier(0.16,1,0.3,1); }
-.reticle.detected { transform: scale(1.08); }
-.reticle-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(78,168,255,0.25); transition: all 0.5s ease; }
-.reticle.detected .reticle-ring { border-color: var(--green); box-shadow: 0 0 30px var(--green-glow), inset 0 0 30px var(--green-glow); }
-.reticle-ring::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 1px dashed rgba(78,168,255,0.15); animation: spin 12s linear infinite; }
-.reticle.detected .reticle-ring::after { border-color: rgba(52,211,153,0.2); animation-duration: 6s; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.corner-mark { position: absolute; width: 24px; height: 24px; border-color: var(--accent); border-style: solid; border-width: 0; transition: border-color 0.4s; }
-.reticle.detected .corner-mark { border-color: var(--green); }
-.corner-mark.tl { top: -16px; left: -16px; border-top-width: 2px; border-left-width: 2px; border-radius: 4px 0 0 0; }
-.corner-mark.tr { top: -16px; right: -16px; border-top-width: 2px; border-right-width: 2px; border-radius: 0 4px 0 0; }
-.corner-mark.bl { bottom: -16px; left: -16px; border-bottom-width: 2px; border-left-width: 2px; border-radius: 0 0 0 4px; }
-.corner-mark.br { bottom: -16px; right: -16px; border-bottom-width: 2px; border-right-width: 2px; border-radius: 0 0 4px 0; }
-
-.scan-hint { margin-top: 32px; font-size: 14px; color: var(--text-sec); letter-spacing: 0.03em; text-align: center; transition: opacity 0.4s; }
-.scan-hint.hidden { opacity: 0; }
-
-.confidence-wrap {
-  position: absolute; top: 50%; left: 24px; right: 24px;
-  transform: translateY(130px);
-  display: flex; align-items: center; gap: 10px;
-  opacity: 0.4; transition: opacity 0.3s;
-}
-.confidence-wrap.active { opacity: 1; }
-.conf-label { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
-.conf-track { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
-.conf-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.25s, background 0.3s; width: 0%; }
-.conf-fill.high { background: var(--green); }
-.conf-pct { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--text-dim); min-width: 36px; text-align: right; }
-
-.scan-bar {
-  position: absolute; bottom: max(env(safe-area-inset-bottom, 24px), 24px);
-  left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; padding: 10px 20px;
-  background: var(--card-bg); border: 1px solid var(--card-border);
-  border-radius: 100px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  font-size: 13px; color: var(--text-sec); transition: all 0.4s; white-space: nowrap;
-}
-.scan-bar-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.5s ease-in-out infinite; }
-.scan-bar.detected .scan-bar-dot { background: var(--green); animation: none; }
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
-
-.info-panel {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
-  transform: translateY(100%); transition: transform 0.6s cubic-bezier(0.16,1,0.3,1);
-  pointer-events: auto;
-}
-.info-panel.visible { transform: translateY(0); }
-
-.info-card {
-  margin: 0 12px max(env(safe-area-inset-bottom, 12px), 12px);
-  padding: 24px 22px 22px; background: var(--card-bg);
-  border: 1px solid var(--card-border); border-radius: var(--radius);
-  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
-  max-height: 60dvh; overflow-y: auto; overscroll-behavior: contain;
-}
-.info-card::-webkit-scrollbar { display: none; }
-
-.drag-handle { width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); margin: 0 auto 20px; }
-.planet-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
-.planet-icon {
-  width: 56px; height: 56px; border-radius: 50%;
-  background: linear-gradient(135deg, #1a6baa 0%, #2d8f4e 40%, #1a6baa 70%, #d4a843 100%);
-  box-shadow: 0 0 20px var(--accent-glow), inset 0 -4px 8px rgba(0,0,0,0.3);
-  flex-shrink: 0; position: relative; overflow: hidden;
-}
-.planet-icon::after { content: ''; position: absolute; top: 6px; left: 8px; width: 18px; height: 12px; background: rgba(255,255,255,0.15); border-radius: 50%; transform: rotate(-20deg); }
-.planet-name { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
-.planet-subtitle { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--accent); margin-top: 4px; letter-spacing: 0.06em; text-transform: uppercase; }
-.planet-desc { font-size: 14px; line-height: 1.65; color: var(--text-sec); margin-bottom: 22px; }
-
-.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-.stat-card { padding: 14px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 14px; }
-.stat-label { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-.stat-value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
-.stat-unit { font-size: 12px; font-weight: 400; color: var(--text-sec); margin-left: 2px; }
-
-.composition { margin-bottom: 20px; }
-.comp-title { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
-.comp-bar { height: 8px; border-radius: 4px; display: flex; overflow: hidden; gap: 2px; }
-.comp-segment { border-radius: 4px; }
-.comp-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
-.comp-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-sec); }
-.comp-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
-
-.facts { padding: 16px; background: linear-gradient(135deg, rgba(78,168,255,0.06) 0%, rgba(0,229,200,0.04) 100%); border: 1px solid rgba(78,168,255,0.08); border-radius: 14px; }
-.facts-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-.facts-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
-.facts-list li { font-size: 13px; line-height: 1.5; color: var(--text-sec); padding-left: 16px; position: relative; }
-.facts-list li::before { content: '→'; position: absolute; left: 0; color: var(--accent); }
-
-.start-screen {
-  position: fixed; inset: 0; z-index: 100; background: var(--bg);
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; text-align: center; padding: 40px 32px;
-  transition: opacity 0.5s, visibility 0.5s;
-}
-.start-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-
-.start-planet {
-  width: 120px; height: 120px; border-radius: 50%;
-  background: linear-gradient(135deg, #1a6baa 0%, #2d8f4e 35%, #1a6baa 65%, #d4a843 100%);
-  box-shadow: 0 0 60px var(--accent-glow), 0 0 120px rgba(78,168,255,0.1);
-  margin-bottom: 40px; position: relative; animation: float 4s ease-in-out infinite;
-}
-.start-planet::after { content: ''; position: absolute; top: 16px; left: 22px; width: 36px; height: 22px; background: rgba(255,255,255,0.1); border-radius: 50%; transform: rotate(-15deg); }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-
-.start-title { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
-.start-title span { background: linear-gradient(135deg, var(--accent), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.start-desc { font-size: 15px; color: var(--text-sec); line-height: 1.6; max-width: 280px; margin-bottom: 48px; }
-.start-btn {
-  appearance: none; border: none; background: var(--accent); color: #fff;
-  font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600;
-  padding: 16px 48px; border-radius: 100px; cursor: pointer;
-  box-shadow: 0 4px 24px var(--accent-glow); transition: transform 0.2s;
-}
-.start-btn:active { transform: scale(0.96); }
-.start-note { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
-
-.error-screen {
-  position: fixed; inset: 0; z-index: 200; background: var(--bg);
-  display: none; flex-direction: column; align-items: center;
-  justify-content: center; text-align: center; padding: 40px 32px;
-}
-.error-screen.visible { display: flex; }
-.error-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,80,80,0.1); display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 24px; }
-.error-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-.error-desc { font-size: 14px; color: var(--text-sec); line-height: 1.6; max-width: 280px; }
-
-@keyframes card-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-.info-panel.visible .stat-card { animation: card-in 0.4s cubic-bezier(0.16,1,0.3,1) both; }
-.info-panel.visible .stat-card:nth-child(1) { animation-delay: 0.1s; }
-.info-panel.visible .stat-card:nth-child(2) { animation-delay: 0.15s; }
-.info-panel.visible .stat-card:nth-child(3) { animation-delay: 0.2s; }
-.info-panel.visible .stat-card:nth-child(4) { animation-delay: 0.25s; }
-.info-panel.visible .composition { animation: card-in 0.4s 0.3s cubic-bezier(0.16,1,0.3,1) both; }
-.info-panel.visible .facts { animation: card-in 0.4s 0.35s cubic-bezier(0.16,1,0.3,1) both; }
-.close-btn {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: rgba(255,255,255,0.08);
-  border: none;
-  color: white;
-  font-size: 18px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  cursor: pointer;
-  z-index: 5;
-}
-
-.info-panel.fullscreen {
-  top: 0;
-  bottom: 0;
-}
-
-.info-panel.fullscreen .info-card {
-  margin: 0;
-  border-radius: 0;
-  max-height: 100dvh;
-  height: 100dvh;
-}
+  body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background: #111; color: #fff; }
+  video { display: block; margin-bottom: 10px; border: 2px solid #444; }
+  .conf-wrap { width: 300px; height: 20px; background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+  .conf-fill { height: 100%; width: 0; background: #0f0; transition: width 0.1s; }
+  .conf-fill.high { background: #ff0; }
+  .conf-wrap.active { border: 2px solid #0f0; }
 </style>
 </head>
 <body>
 
-<video id="camera" autoplay playsinline muted></video>
-
-<div class="scan-ui">
-  <div class="top-bar">
-    <div class="logo"><div class="logo-dot"></div>PlanetAR</div>
-    <div class="status-chip" id="statusChip">A PROCURAR</div>
-  </div>
-  <div class="reticle" id="reticle">
-    <div class="reticle-ring"></div>
-    <div class="corner-mark tl"></div>
-    <div class="corner-mark tr"></div>
-    <div class="corner-mark bl"></div>
-    <div class="corner-mark br"></div>
-  </div>
-  <div class="scan-hint" id="scanHint">Aponta a câmara para a maquete da Terra</div>
-  <div class="confidence-wrap" id="confWrap">
-    <span class="conf-label">Confiança</span>
-    <div class="conf-track"><div class="conf-fill" id="confFill"></div></div>
-    <span class="conf-pct" id="confPct">0%</span>
-  </div>
-  <div class="scan-bar" id="scanBar">
-    <div class="scan-bar-dot"></div>
-    <span id="scanBarText">A analisar imagem...</span>
-  </div>
+<h1>Detector de Maquete PlanetAR</h1>
+<video id="video" autoplay playsinline width="320" height="240"></video>
+<div class="conf-wrap" id="confWrap">
+  <div class="conf-fill" id="confFill"></div>
 </div>
-
-<div class="info-panel" id="infoPanel">
-  <div class="info-card" id="infoCard">
-    <button id="closeBtn" class="close-btn">✕</button>
-    <div class="drag-handle"></div>
-    <div class="planet-header">
-      <div class="planet-icon"></div>
-      <div>
-        <div class="planet-name">Terra</div>
-        <div class="planet-subtitle">3º Planeta · Sistema Solar</div>
-      </div>
-    </div>
-    <div class="planet-desc">O único planeta conhecido com vida. A Terra tem oceanos de água líquida, uma atmosfera rica em azoto e oxigénio, e um campo magnético que a protege do vento solar.</div>
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">Diâmetro</div><div class="stat-value">12 742<span class="stat-unit">km</span></div></div>
-      <div class="stat-card"><div class="stat-label">Massa</div><div class="stat-value">5.97×10²⁴<span class="stat-unit">kg</span></div></div>
-      <div class="stat-card"><div class="stat-label">Dist. ao Sol</div><div class="stat-value">149.6<span class="stat-unit">M km</span></div></div>
-      <div class="stat-card"><div class="stat-label">Temp. Média</div><div class="stat-value">15<span class="stat-unit">°C</span></div></div>
-    </div>
-    <div class="composition">
-      <div class="comp-title">Composição Atmosférica</div>
-      <div class="comp-bar">
-        <div class="comp-segment" style="flex:78;background:#4ea8ff;"></div>
-        <div class="comp-segment" style="flex:21;background:#34d399;"></div>
-        <div class="comp-segment" style="flex:1;background:#f9c846;"></div>
-      </div>
-      <div class="comp-legend">
-        <div class="comp-legend-item"><div class="comp-legend-dot" style="background:#4ea8ff;"></div>Azoto 78%</div>
-        <div class="comp-legend-item"><div class="comp-legend-dot" style="background:#34d399;"></div>Oxigénio 21%</div>
-        <div class="comp-legend-item"><div class="comp-legend-dot" style="background:#f9c846;"></div>Outros 1%</div>
-      </div>
-    </div>
-    <div class="facts">
-      <div class="facts-title">✦ Sabias que...</div>
-      <ul class="facts-list">
-        <li>Um dia na Terra nem sempre durou 24h — há 1.4 mil milhões de anos durava apenas 18h</li>
-        <li>70.8% da superfície é coberta por água, mas apenas 3% é água doce</li>
-        <li>O ponto mais profundo do oceano (Fossa das Marianas) tem 10 994 metros</li>
-        <li>A Terra viaja pelo espaço a cerca de 107 000 km/h em torno do Sol</li>
-      </ul>
-    </div>
-  </div>
-</div>
-
-<div class="start-screen" id="startScreen">
-  <div class="start-planet"></div>
-  <div class="start-title">Planet<span>AR</span></div>
-  <div class="start-desc">Aponta a câmara do telemóvel para a maquete da Terra e descobre tudo sobre ela.</div>
-  <button class="start-btn" id="startBtn">Iniciar Câmara</button>
-  <div class="start-note">Será pedido acesso à câmara</div>
-</div>
-
-<div class="error-screen" id="errorScreen">
-  <div class="error-icon">📷</div>
-  <div class="error-title">Câmara não disponível</div>
-  <div class="error-desc">Permite o acesso à câmara nas definições do browser para usares o PlanetAR.</div>
-</div>
+<p id="confPct">0%</p>
 
 <script>
-(() => {
-  const $ = id => document.getElementById(id);
+const video = document.getElementById('video');
+const confFill = document.getElementById('confFill');
+const confPct = document.getElementById('confPct');
+const confWrap = document.getElementById('confWrap');
 
-  const video = $('camera');
-  const reticle = $('reticle');
-  const statusChip = $('statusChip');
-  const scanHint = $('scanHint');
-  const scanBar = $('scanBar');
-  const scanBarText = $('scanBarText');
-  const infoPanel = $('infoPanel');
-  const confFill = $('confFill');
-  const confPct = $('confPct');
-  const confWrap = $('confWrap');
+let smoothConf = 0;
+const SMOOTH = 0.08;
+const DETECT_ON = 0.55;
+const DETECT_OFF = 0.45;
+const COOLDOWN = 1500;
+let lastDetectTime = 0;
+let isDetected = false;
 
-  let isDetected = false;
-  let smoothConf = 0;
-  let lastDetectTime = 0;
+// funções de callback
+function show(){ isDetected = true; console.log("Maquete detectada!"); }
+function hide(){ isDetected = false; console.log("Maquete perdida!"); }
 
-  const DETECT_ON = 0.65;
-  const DETECT_OFF = 0.35;
-  const SMOOTH = 0.2;
-  const COOLDOWN = 1200;
+// inicializar webcam
+navigator.mediaDevices.getUserMedia({ video: true }).then(stream => video.srcObject = stream);
 
-  $('startBtn').addEventListener('click', async () => {
+// função de deteção completa
+function detect() {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+
+  const W = 160, H = 120; 
+  c.width = W; c.height = H;
+
+  const rx = W * 0.15 | 0;
+  const ry = H * 0.15 | 0;
+  const rw = W * 0.7 | 0;
+  const rh = H * 0.7 | 0;
+
+  function loop() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: 640, height: 480 },
-        audio: false
-      });
+      ctx.drawImage(video, 0, 0, W, H);
+      const data = ctx.getImageData(rx, ry, rw, rh).data;
 
-      video.srcObject = stream;
-      await video.play();
-      $('startScreen').classList.add('hidden');
-      setTimeout(detect, 300);
+      let blue=0, green=0, brown=0, dark=0, total=0;
+      const mask=[];
 
-    } catch (e) {
-      $('errorScreen').classList.add('visible');
-    }
-  });
-
-  function rgbToHsv(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    let max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h, s, v = max;
-    let d = max - min;
-    s = max === 0 ? 0 : d / max;
-    if (d === 0) h = 0;
-    else if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h = Math.round(h * 60);
-    if (h < 0) h += 360;
-    return [h, s, v];
-  }
-
-  function detect() {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-
-    const W = 100, H = 75;
-    c.width = W; c.height = H;
-
-    const rx = W * 0.25 | 0;
-    const ry = H * 0.2 | 0;
-    const rw = W * 0.5 | 0;
-    const rh = H * 0.6 | 0;
-
-    function loop() {
-      try {
-        ctx.drawImage(video, 0, 0, W, H);
-        const d = ctx.getImageData(rx, ry, rw, rh).data;
-
-        let blue = 0, green = 0, brown = 0, dark = 0;
-        let tot = 0;
-
-        for (let i = 0; i < d.length; i += 16) { 
-          const r = d[i], g = d[i+1], b = d[i+2];
-
-          // Ignora pixels muito claros (ecrãs, reflexos)
-          if (r > 200 && g > 200 && b > 200) continue;
-
-          // Ignora pixels pouco saturados
-          const [h, s, v] = rgbToHsv(r, g, b);
-          if (s < 0.25) continue;
-
-          tot++;
-
-          if (b > 70 && b > r * 1.15 && b > g * 0.95) blue++;
-          else if (g > 60 && g > r * 0.8 && g > b * 0.75) green++;
-          else if (r > 90 && g > 60 && b < r * 0.6) brown++;
-          else if (r < 60 && g < 60 && b < 80) dark++;
+      for (let y=0;y<rh;y+=2){
+        for (let x=0;x<rw;x+=2){
+          const i=(y*rw+x)*4;
+          const r=data[i], g=data[i+1], b=data[i+2];
+          let detected=false;
+          if(b>70 && b>r*1.15 && b>g*0.95){ blue++; detected=true; }
+          else if(g>60 && g>r*0.8 && g>b*0.75){ green++; detected=true; }
+          else if(r>90 && g>60 && b<r*0.6){ brown++; detected=true; }
+          else if(r<60 && g<60 && b<80){ dark++; detected=true; }
+          mask.push(detected?1:0);
+          total++;
         }
+      }
 
-        let conf = 0;
+      const radius = Math.min(rw,rh)/2;
+      const centerX = rw/2;
+      const centerY = rh/2;
+      let countInCircle=0;
 
-        if (tot > 0) {
-          const bp = blue/tot;
-          const gp = green/tot;
-          const brp = brown/tot;
-          const dp = dark/tot;
-
-          const mix = bp + gp + brp + dp;
-
-          // Evita grandes áreas uniformes (provável ecrã)
-          if (mix > 0.8) conf = 0;
-          else if (mix > 0.35 && bp > 0.08 && (gp + brp) > 0.1) {
-            const diversity = (bp * 0.4 + gp * 0.3 + brp * 0.2 + dp * 0.1);
-            conf = Math.min(1, mix * 1.1 * diversity * 2);
-          }
+      for(let y=0;y<rh;y+=2){
+        for(let x=0;x<rw;x+=2){
+          const dx=x-centerX, dy=y-centerY;
+          const dist=Math.sqrt(dx*dx+dy*dy);
+          const idx=(y/2)*(rw/2)+(x/2);
+          if(dist<radius*0.95 && mask[idx]) countInCircle++;
         }
+      }
+      const circleScore = countInCircle/total;
 
-        smoothConf = smoothConf * (1 - SMOOTH) + conf * SMOOTH;
+      const bp=blue/total, gp=green/total, brp=brown/total, dp=dark/total;
+      let conf=0;
 
-        const pct = Math.round(smoothConf * 100);
-        confFill.style.width = pct + '%';
-        confPct.textContent = pct + '%';
-        confFill.classList.toggle('high', smoothConf > DETECT_ON);
-        confWrap.classList.toggle('active', smoothConf > 0.15);
+      if(bp+gp+brp+dp>0.35 && circleScore>0.25){
+        const diversity=(bp*0.4 + gp*0.3 + brp*0.2 + dp*0.1);
+        conf = Math.min(1,(bp+gp+brp+dp)*1.2*diversity*circleScore*2);
+      }
 
-        const now = Date.now();
-        if (!isDetected && smoothConf >= DETECT_ON && (now - lastDetectTime > COOLDOWN)) {
-          show();
-          lastDetectTime = now;
-        } else if (isDetected && smoothConf < DETECT_OFF) {
-          hide();
-        }
+      smoothConf = smoothConf*(1-SMOOTH)+conf*SMOOTH;
+      const pct=Math.round(smoothConf*100);
+      confFill.style.width = pct+'%';
+      confPct.textContent = pct+'%';
 
-      } catch (err) { console.error(err); }
+      confFill.classList.toggle('high', smoothConf>DETECT_ON);
+      confWrap.classList.toggle('active', smoothConf>0.15);
 
-      requestAnimationFrame(loop);
-    }
-    loop();
+      const now = Date.now();
+      if(!isDetected && smoothConf>=DETECT_ON && (now-lastDetectTime>COOLDOWN)){
+        show();
+        lastDetectTime=now;
+      } else if(isDetected && smoothConf<DETECT_OFF){
+        hide();
+      }
+
+    } catch(e){ console.error(e); }
+    requestAnimationFrame(loop);
   }
+  loop();
+}
 
-  function show() {
-    isDetected = true;
-    reticle.classList.add('detected');
-    statusChip.textContent = 'DETECTADO';
-    statusChip.classList.add('detected');
-    scanHint.classList.add('hidden');
-    infoPanel.classList.add('visible');
-  }
-
-  function hide() {
-    isDetected = false;
-    reticle.classList.remove('detected');
-    statusChip.textContent = 'A PROCURAR';
-    statusChip.classList.remove('detected');
-    scanHint.classList.remove('hidden');
-    infoPanel.classList.remove('visible');
-  }
-
-  $('closeBtn').addEventListener('click', hide);
-
-})();
+// iniciar deteção
+detect();
 </script>
 </body>
 </html>
